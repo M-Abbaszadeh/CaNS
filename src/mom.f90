@@ -7,6 +7,7 @@ module mod_mom
   public momxad,momyad,momzad,momxp,momyp,momzp
   contains
   subroutine momxad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dudt,taux)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in) :: dxi,dyi,dzi,visc
@@ -17,22 +18,32 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
     real(8) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    real(8) :: taux2d,taux3d
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dudt,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
     integer :: nxg,nyg,nzg
     !
+
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,nz
+      do j=1,ny
+        do i=1,nx
+          kp = k + 1
+          km = k - 1
+          jp = j + 1
+          jm = j - 1
+          ip = i + 1
+          im = i - 1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
     !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
-    do k=1,nz
-      kp = k + 1
-      km = k - 1
-      do j=1,ny
-        jp = j + 1
-        jm = j - 1
-        do i=1,nx
-          ip = i + 1
-          im = i - 1
+#endif
           uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
           uuim  = 0.25d0*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
           uvjp  = 0.25d0*( u(i,jp,k)+u(i,j,k) )*( v(ip,j ,k )+v(i,j ,k ) )
@@ -54,22 +65,38 @@ module mod_mom
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     taux(:) = 0.
+     taux2d=0.d0
+     taux3d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do i=1,nx
         dudyp = (u(i,1 ,k)-u(i,0   ,k))*dyi*visc*dzflzi(k)
         dudym = (u(i,ny,k)-u(i,ny+1,k))*dyi*visc*dzflzi(k)
-        taux(2) = taux(2) + (dudyp+dudym)
+        taux2d = taux2d + (dudyp+dudym)
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    taux(2)=taux2d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do j=1,ny
       do i=1,nx
         dudzp = (u(i,j,1 )-u(i,j,0   ))*dzci(0)*visc
         dudzm = (u(i,j,nz)-u(i,j,nz+1))*dzci(nz)*visc
-        taux(3) = taux(3) + (dudzp+dudzm)
+        taux3d = taux3d + (dudzp+dudzm)
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    taux(3)=taux3d
+
     call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
@@ -81,6 +108,7 @@ module mod_mom
   end subroutine momxad
   !
   subroutine momyad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dvdt,tauy)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in) :: dxi,dyi,dzi,visc
@@ -91,8 +119,26 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
     real(8) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(8) :: tauy1d,tauy3d
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dvdt,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
+
     integer :: nxg,nyg,nzg
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,nz
+      do j=1,ny
+        do i=1,nx
+          kp = k + 1
+          km = k - 1
+          jp = j + 1
+          jm = j - 1
+          ip = i + 1
+          im = i - 1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
@@ -107,6 +153,7 @@ module mod_mom
         do i=1,nx
           ip = i + 1
           im = i - 1
+#endif
           uvip  = 0.25d0*( u(i ,j,k)+u(i ,jp,k) )*( v(i,j,k )+v(ip,j ,k) )
           uvim  = 0.25d0*( u(im,j,k)+u(im,jp,k) )*( v(i,j,k )+v(im,j ,k) )
           vvjp  = 0.25d0*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
@@ -128,22 +175,37 @@ module mod_mom
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
-    tauy(:) = 0.
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
+     tauy(:) = 0.
+     tauy1d=0.d0
+     tauy3d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do j=1,ny
         dvdxp = (v(1 ,j,k)-v(0   ,j,k))*dxi*visc*dzflzi(k)
         dvdxm = (v(nx,j,k)-v(nx+1,j,k))*dxi*visc*dzflzi(k)
-        tauy(1) = tauy(1) + (dvdxp+dvdxm)
+        tauy1d = tauy1d + (dvdxp+dvdxm)
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    tauy(1)=tauy1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do j=1,ny
       do i=1,nx
         dvdzp = (v(i,j,1 )-v(i,j,0   ))*dzci(0)*visc
         dvdzm = (v(i,j,nz)-v(i,j,nz+1))*dzci(nz)*visc
-        tauy(3) = tauy(3) + (dvdzp+dvdzm)
+        tauy3d = tauy3d + (dvdzp+dvdzm)
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    tauy(3)=tauy3d
     call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
@@ -155,6 +217,7 @@ module mod_mom
   end subroutine momyad
   !
   subroutine momzad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dwdt,tauz)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in) :: dxi,dyi,dzi,visc
@@ -165,8 +228,25 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(8) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    real(8) :: tauz1d,tauz2d
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dwdt,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
     integer :: nxg,nyg,nzg
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,nz
+      do j=1,ny
+        do i=1,nx
+          kp = k + 1
+          km = k - 1
+          jp = j + 1
+          jm = j - 1
+          ip = i + 1
+          im = i - 1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
@@ -181,6 +261,7 @@ module mod_mom
         do i=1,nx
           ip = i + 1
           im = i - 1
+#endif
           uwip  = 0.25d0*( w(i,j,k)+w(ip,j,k) )*( u(i ,j ,k)+u(i ,j ,kp) )
           uwim  = 0.25d0*( w(i,j,k)+w(im,j,k) )*( u(im,j ,k)+u(im,j ,kp) )
           vwjp  = 0.25d0*( w(i,j,k)+w(i,jp,k) )*( v(i ,j ,k)+v(i ,j ,kp) )
@@ -202,22 +283,37 @@ module mod_mom
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     tauz(:) = 0.
+    tauz1d = 0.d0
+    tauz2d = 0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do j=1,ny
         dwdxp = (w(1 ,j,k)-w(0   ,j,k))*dxi*visc*dzflzi(k)
         dwdxm = (w(nx,j,k)-w(nx+1,j,k))*dxi*visc*dzflzi(k)
-        tauz(1) = tauz(1) + (dwdxp+dwdxm)
+        tauz1d = tauz1d + (dwdxp+dwdxm)
       enddo
     enddo
+!@cuf istat=cudaDeviceSynchronize()
+    tauz(1)=tauz1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do i=1,nx
         dwdyp = (w(i,1,k )-w(i,0   ,k))*dyi*visc*dzflzi(k)
         dwdym = (w(i,ny,k)-w(i,ny+1,k))*dyi*visc*dzflzi(k)
-        tauz(2) = tauz(2) + (dwdyp+dwdym)
+        tauz2d = tauz2d + (dwdyp+dwdym)
       enddo
     enddo
+!@cuf istat=cudaDeviceSynchronize()
+    tauz(2)=tauz2d
     call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
@@ -229,17 +325,26 @@ module mod_mom
   end subroutine momzad
   !
   subroutine momxp(nx,ny,nz,dxi,p,dudt)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in) :: dxi 
     real(8), dimension(0:,0:,0:), intent(in) :: p
     real(8), dimension(:,:,:), intent(out) :: dudt
+#ifdef USE_CUDA
+    attributes(managed):: p,dudt
+    integer:: istat
+#endif
     integer :: i,j,k
     integer :: ip
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,ip) &
     !$OMP SHARED(nx,ny,nz,dxi,p,dudt)
+#endif
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -248,18 +353,33 @@ module mod_mom
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+!@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momxp
   !
   subroutine momyp(nx,ny,nz,dyi,p,dvdt)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in) :: dyi 
     real(8), dimension(0:,0:,0:), intent(in) :: p
     real(8), dimension(:,:,:), intent(out) :: dvdt
+#ifdef USE_CUDA
+    attributes(managed):: p,dvdt
+    integer:: istat
+#endif
     integer :: i,j,k
     integer :: jp
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,nz
+      do j=1,ny
+        do i=1,nx
+          jp = j + 1
+#else
     !
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,jp) &
@@ -268,23 +388,39 @@ module mod_mom
       do j=1,ny
         jp = j + 1
         do i=1,nx
+#endif
           dvdt(i,j,k) = - dyi*( p(i,jp,k)-p(i,j,k) )
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+  !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momyp
   !
   subroutine momzp(nx,ny,nz,dzci,p,dwdt)
+    !@cuf use cudafor
     implicit none
     integer, intent(in) :: nx,ny,nz
     real(8), intent(in), dimension(0:) :: dzci
     real(8), dimension(0:,0:,0:), intent(in) :: p
     real(8), dimension(:,:,:), intent(out) :: dwdt
+#ifdef USE_CUDA
+    attributes(managed):: p,dwdt,dzci
+    integer:: istat
+#endif
     integer :: kp
     integer :: i,j,k
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,nz
+      do j=1,ny
+        do i=1,nx
+        kp = k + 1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,kp) &
     !$OMP SHARED(nx,ny,nz,p,dwdt,dzci)
@@ -292,11 +428,15 @@ module mod_mom
       kp = k + 1
       do j=1,ny
         do i=1,nx
+#endif
           dwdt(i,j,k) = - dzci(k)*( p(i,j,kp)-p(i,j,k) )
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+  !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momzp
 end module mod_mom

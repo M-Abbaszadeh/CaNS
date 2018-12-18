@@ -4,6 +4,9 @@ module mod_rk
   use mod_mom  , only: momxad,momyad,momzad,momxp,momyp,momzp
   use mod_momd , only: momxpd,momypd,momzpd,momxa,momya,momza
   use mod_moms , only: momsad
+#ifdef USE_NVTX
+  use nvtx
+#endif 
   implicit none
   private
   public rk,rk_id
@@ -13,6 +16,7 @@ module mod_rk
     ! low-storage 3rd-order Runge-Kutta scheme 
     ! for time integration of the momentum equations.
     !
+     !@cuf use cudafor
     implicit none
     real(8), intent(in), dimension(2) :: rkpar
     integer, intent(in), dimension(3) :: n
@@ -27,6 +31,11 @@ module mod_rk
     real(8),              dimension(n(1),n(2),n(3)) ::          dudtrk, dvdtrk, dwdtrk
     real(8) :: factor1,factor2,factor12
     real(8), dimension(3) :: taux,tauy,tauz
+#ifdef USE_CUDA
+   attributes(managed):: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
+   attributes(managed):: dudtrko,dvdtrko,dwdtrko
+   integer:: istat
+#endif
     integer :: i,j,k
     real(8) :: mean
     !
@@ -34,12 +43,33 @@ module mod_rk
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
     !
+ #ifdef USE_NVTX
+      call nvtxStartRange("momxp",1)
+ #endif
     call momxp(n(1),n(2),n(3),dli(1),p,dudtrk)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momyp",2)
+ #endif
     call momyp(n(1),n(2),n(3),dli(2),p,dvdtrk)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momzp",3)
+ #endif
     call momzp(n(1),n(2),n(3),dzci  ,p,dwdtrk)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
+
+!@cuf istat=cudaDeviceSynchronize()
+
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP SHARED(n,factor12,u,v,w,up,vp,wp,dudtrk,dvdtrk,dwdtrk)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -49,19 +79,42 @@ module mod_rk
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif 
+!@cuf istat=cudaDeviceSynchronize()
+
+ #ifdef USE_NVTX
+      call nvtxStartRange("momxad",4)
+ #endif
     call momxad(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,dzflzi,visc,u,v,w,dudtrk,taux)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momyad",5)
+ #endif
     call momyad(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,dzflzi,visc,u,v,w,dvdtrk,tauy)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momzad",6)
+ #endif
     call momzad(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,dzflzi,visc,u,v,w,dwdtrk,tauz)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
+
     f(1) = (factor1*sum(taux(:)/l(:)) + factor2*sum(tauxo(:)/l(:)))
     f(2) = (factor1*sum(tauy(:)/l(:)) + factor2*sum(tauyo(:)/l(:)))
     f(3) = (factor1*sum(tauz(:)/l(:)) + factor2*sum(tauzo(:)/l(:)))
     tauxo(:) = taux(:)
     tauyo(:) = tauy(:)
     tauzo(:) = tauz(:)
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP SHARED(n,factor1,factor2,up,vp,wp,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -75,7 +128,10 @@ module mod_rk
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+
     !
     ! bulk velocity forcing
     !

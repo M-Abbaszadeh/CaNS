@@ -53,6 +53,9 @@ program cans
                              is_outflow,no_outflow,is_forced
   use mod_sanity     , only: test_sanity
   use mod_solver     , only: solver
+#ifdef USE_NVTX
+  use nvtx
+#endif 
   !$ use omp_lib
   implicit none
   integer, parameter, dimension(3) :: ng = (/itot,jtot,ktot/)
@@ -61,6 +64,9 @@ program cans
   real(8), parameter, dimension(3) :: dl  = (/dx,dy,dz/)
   real(8), parameter, dimension(3) :: dli = (/dxi,dyi,dzi/)
   real(8), dimension(0:imax+1,0:jmax+1,0:ktot+1) :: u,v,w,p,up,vp,wp,pp
+#ifdef USE_CUDA
+  attributes(managed):: u,v,w,p,up,vp,wp,pp
+#endif
   real(8), dimension(imax,jmax,ktot)    :: dudtrko,dvdtrko,dwdtrko
   real(8), dimension(3) :: tauxo,tauyo,tauzo
   real(8), dimension(3) :: f
@@ -87,6 +93,9 @@ program cans
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep
   real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
+#ifdef USE_CUDA
+  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko
+#endif
   real(8) :: meanvel
   real(8), dimension(3) :: dpdl
   !real(8), allocatable, dimension(:) :: var
@@ -104,6 +113,10 @@ program cans
   if(myid.eq.0) print*, '*** Beginning of simulation ***'
   if(myid.eq.0) print*, '******************************'
   if(myid.eq.0) print*, ''
+
+#ifdef USE_CUDA
+  if(myid.eq.0) print*, ' GPU accelerated version'
+#endif 
   call initgrid(inivel,n(3),gr,lz,dzc,dzf,zc,zf)
   if(myid.eq.0) then
     inquire (iolength=lenr) dzc(1)
@@ -140,7 +153,13 @@ program cans
   endif
   call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
+#ifdef USE_NVTX
+      call nvtxStartRange("chkdt", 1)
+#endif
   call chkdt(n,dl,dzci,dzfi,visc,u,v,w,dtmax)
+#ifdef USE_NVTX
+      call nvtxEndRange
+#endif
   dt = cfl*dtmax
   if(myid.eq.0) print*, 'dtmax = ', dtmax, 'dt = ',dt
   dti = 1.d0/dt
@@ -176,11 +195,26 @@ program cans
       dtrk = sum(rkcoeff(:,irk))*dt
       dtrki = dtrk**(-1)
 #ifndef IMPDIFF
+
+ #ifdef USE_NVTX
+      call nvtxStartRange("rk", irk)
+ #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzf/lz,dzc/lz,visc,dt,l, &
                  u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
+
 #else
+
+ #ifdef USE_NVTX
+      call nvtxStartRange("rk_id", irk)
+ #endif
       call rk_id(rkcoeff(:,irk),n,dli,dzci,dzfi,dzf/lz,dzc/lz,visc,dt,l, &
                  u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
 #endif
       if(is_forced(1)) up(1:n(1),1:n(2),1:n(3)) = up(1:n(1),1:n(2),1:n(3)) + f(1)
       if(is_forced(2)) vp(1:n(1),1:n(2),1:n(3)) = vp(1:n(1),1:n(2),1:n(3)) + f(2)
@@ -191,20 +225,38 @@ program cans
       up(:,:,:) = up(:,:,:)*alpha
       !$OMP END WORKSHARE
       bb(:) = bu(:) + alpha
+ #ifdef USE_NVTX
+      call nvtxStartRange("solver_u", irk+3)
+ #endif
       call updt_rhs_b((/'f','c','c'/),cbcvel(:,:,1),n,rhsbu%x,rhsbu%y,rhsbu%z,up(1:imax,1:jmax,1:ktot))
       call solver(n,arrplanu,normfftu,lambdaxyu,au,bb,cu,cbcvel(:,3,1),(/'f','c','c'/),up(1:imax,1:jmax,1:ktot))
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
       !$OMP WORKSHARE
       vp(:,:,:) = vp(:,:,:)*alpha
       !$OMP END WORKSHARE
       bb(:) = bv(:) + alpha
+ #ifdef USE_NVTX
+      call nvtxStartRange("solver_v", irk+4)
+ #endif
       call updt_rhs_b((/'c','f','c'/),cbcvel(:,:,2),n,rhsbv%x,rhsbv%y,rhsbv%z,vp(1:imax,1:jmax,1:ktot))
       call solver(n,arrplanv,normfftv,lambdaxyv,av,bb,cv,cbcvel(:,3,2),(/'c','f','c'/),vp(1:imax,1:jmax,1:ktot))
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
       !$OMP WORKSHARE
       wp(:,:,:) = wp(:,:,:)*alpha
       !$OMP END WORKSHARE
       bb(:) = bw(:) + alpha
+ #ifdef USE_NVTX
+      call nvtxStartRange("solver_w", irk+5)
+ #endif
       call updt_rhs_b((/'c','c','f'/),cbcvel(:,:,3),n,rhsbw%x,rhsbw%y,rhsbw%z,wp(1:imax,1:jmax,1:ktot))
       call solver(n,arrplanw,normfftw,lambdaxyw,aw,bb,cw,cbcvel(:,3,3),(/'c','c','f'/),wp(1:imax,1:jmax,1:ktot))
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
 #endif
       dpdl(:) = dpdl(:) + f(:)
 #ifdef DEBUG
@@ -224,9 +276,23 @@ program cans
       call bounduvw(cbcvel,n,bcvel,no_outflow,dl,dzc,dzf,up,vp,wp) ! outflow BC only at final velocity
       call fillps(n,dli,dzfi,dtrki,up,vp,wp,pp)
       call updt_rhs_b((/'c','c','c'/),cbcpre,n,rhsbp%x,rhsbp%y,rhsbp%z,pp(1:imax,1:jmax,1:ktot))
+ #ifdef USE_NVTX
+      call nvtxStartRange("solver", irk+5)
+ #endif
       call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:imax,1:jmax,1:ktot))
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("boundp", irk+6)
+ #endif
       call boundp(cbcpre,n,bcpre,dl,dzc,dzf,pp)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("correc", irk+7)
+ #endif
       call correc(n,dli,dzci,dtrk,pp,up,vp,wp,u,v,w)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
       call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
 #ifdef IMPDIFF
       alphai = alpha**(-1)
