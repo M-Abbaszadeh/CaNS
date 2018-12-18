@@ -13,6 +13,7 @@ module mod_fillps
     !  ------------------- + ------------------- + -------------------  = div
     !          dz                    dy                    dx
     !
+    !@cuf use cudafor
     implicit none
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(3) :: dli
@@ -22,12 +23,25 @@ module mod_fillps
     real(8), intent(out), dimension(0:,0:,0:) :: p
     real(8) :: dtidxi,dtidyi!,dtidzi
     real(8), dimension(0:n(3)+1) :: dtidzfi
+#ifdef USE_CUDA
+    attributes(managed):: up,vp,wp,p,dtidzfi
+    integer:: istat
+#endif
     integer :: i,j,k,im,jm,km
     !
     dtidxi = dti*dli(1)
     dtidyi = dti*dli(2)
     !dtidzi = dti*dli(3)
     dtidzfi(:) = dti*dzfi(:)
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,n(3)
+      do j=1,n(2)
+        do i=1,n(1)
+          km = k-1
+          jm = j-1
+          im = i-1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP SHARED(n,p,up,vp,wp,dtidzfi,dtidyi,dtidxi) &
     !$OMP PRIVATE(i,j,k,im,jm,km)
@@ -37,6 +51,7 @@ module mod_fillps
         jm = j-1
         do i=1,n(1)
           im = i-1
+#endif
           p(i,j,k) = ( &
                       (wp(i,j,k)-wp(i,j,km))*dtidzfi(k)+ &
                       (vp(i,j,k)-vp(i,jm,k))*dtidyi    + &
@@ -44,7 +59,10 @@ module mod_fillps
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+!@cuf istat=cudaDeviceSynchronize()
     !
     return
   end subroutine fillps
