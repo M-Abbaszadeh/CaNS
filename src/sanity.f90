@@ -208,6 +208,10 @@ module mod_sanity
   logical, intent(in), dimension(0:1,3)            :: is_outflow
   logical, intent(out) :: passed
   real(8), dimension(0:n(1)+1,0:n(2)+1,0:n(3)+1) :: u,v,w,p,up,vp,wp
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,p,up,vp,wp
+    integer:: istat
+#endif
   type(C_PTR), dimension(2,2) :: arrplan
   real(8), dimension(n(1),n(2)) :: lambdaxy
   real(8) :: normfft

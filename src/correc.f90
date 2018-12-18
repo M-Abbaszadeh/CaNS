@@ -7,6 +7,7 @@ module mod_correc
     !
     ! corrects the velocity so that it is divergence free
     !
+    !@cuf use cudafor
     implicit none
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(3) :: dli
@@ -16,6 +17,10 @@ module mod_correc
     real(8), intent(out), dimension(0:,0:,0:) :: u,v,w
     real(8) :: factori,factorj
     real(8), dimension(0:n(3)+1) :: factork
+#ifdef USE_CUDA
+    attributes(managed):: p,up,vp,wp,u,v,w,factork
+    integer:: istat
+#endif
     integer :: i,j,k,ip,jp,kp
     !
     !factor = rkcoeffab(rkiter)*dt
@@ -23,9 +28,13 @@ module mod_correc
     factori = dt*dli(1)
     factorj = dt*dli(2)
     factork = dt*dzci!dli(3)
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP SHARED(n,factori,factorj,factork,u,v,w,up,vp,wp,p) &
     !$OMP PRIVATE(i,j,k,ip,jp,kp)
+#endif
     do k=1,n(3)
       kp = k+1
       do j=1,n(2)
@@ -38,7 +47,10 @@ module mod_correc
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+!@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine correc
 end module mod_correc
