@@ -209,7 +209,7 @@ module mod_sanity
   logical, intent(out) :: passed
   real(8), dimension(0:n(1)+1,0:n(2)+1,0:n(3)+1) :: u,v,w,p,up,vp,wp
 #ifdef USE_CUDA
-    attributes(managed):: u,v,w,p,up,vp,wp
+    attributes(managed):: u,v,w,p,up,vp,wp,dzfi
     integer:: istat
 #endif
   type(C_PTR), dimension(2,2) :: arrplan

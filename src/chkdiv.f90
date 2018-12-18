@@ -9,6 +9,7 @@ module mod_chkdiv
     !
     ! checks the divergence of the velocity field
     !
+     !@cuf use cudafor
     implicit none
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(3) :: dli
@@ -16,6 +17,10 @@ module mod_chkdiv
     real(8), intent(in), dimension(0:,0:,0:) :: u,v,w
     real(8), intent(out) :: divtot,divmax
     real(8) :: dxi,dyi,div!,dzi,div
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dzfi
+    integer:: istat
+#endif
     integer :: i,j,k,im,jm,km
     !integer :: ii,jj
     !
@@ -24,6 +29,15 @@ module mod_chkdiv
     !dzi = dli(3)
     divtot = 0.d0
     divmax = 0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,n(3)
+       do j=1,n(2)
+          do i=1,n(1)
+           km = k-1
+           jm = j-1
+           im = i-1
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP  SHARED(n,u,v,w,dxi,dyi,dzfi) &
     !$OMP  PRIVATE(i,j,k,im,jm,km,div) &
@@ -35,6 +49,7 @@ module mod_chkdiv
           jm = j-1
           do i=1,n(1)
              im = i-1
+#endif
              div = (w(i,j,k)-w(i,j,km))*dzfi(k) + &
                    (v(i,j,k)-v(i,jm,k))*dyi     + &
                    (u(i,j,k)-u(im,j,k))*dxi
@@ -46,7 +61,10 @@ module mod_chkdiv
           enddo
        enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+!@cuf istat=cudaDeviceSynchronize()
     call mpi_allreduce(MPI_IN_PLACE,divtot,1,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     call mpi_allreduce(MPI_IN_PLACE,divmax,1,MPI_REAL8,MPI_MAX,MPI_COMM_WORLD,ierr)
     if(myid.eq.0) print*, 'Total divergence = ', divtot, '| Maximum divergence = ', divmax
