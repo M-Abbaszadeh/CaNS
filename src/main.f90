@@ -182,6 +182,11 @@ program cans
   !
   if(myid.eq.0) print*, '*** Calculation loop starts now ***'
   do while(istep.lt.nstep)
+
+ #ifdef USE_NVTX
+      call nvtxStartRange("timestep", istep)
+ #endif
+
 #ifdef TIMING
     dt12 = MPI_WTIME()
 #endif
@@ -259,6 +264,7 @@ program cans
  #ifdef USE_NVTX
       call nvtxEndRange
  #endif
+
 #ifdef IMPDIFF
       alpha = -1.d0/(.5d0*visc*dtrk)
       !$OMP WORKSHARE
@@ -371,9 +377,23 @@ program cans
       enddo
       !$OMP END PARALLEL DO
 #else
+
+#ifdef USE_CUDA
+     !$cuf kernel do(3) <<<*,*>>> 
+       do k=0,ktot+1    ! Not sure if only for 1:n. To be safe copying the whole array
+        do j=0,jmax+1
+         do i=0,imax+1
+           p(i,j,k) = p(i,j,k) + pp(i,j,k)  
+        end do
+        end do
+       end do
+
+#else
       !$OMP WORKSHARE
       p(:,:,:) = p(:,:,:) + pp(:,:,:)
       !$OMP END WORKSHARE
+#endif 
+
 #endif
       call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
     enddo
@@ -441,6 +461,9 @@ program cans
       if(myid.eq.0) print*, 'Avrg, min & max elapsed time: '
       if(myid.eq.0) print*, dt12av/(1.d0*product(dims)),dt12min,dt12max
 #endif
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
   enddo
   !
   ! clear ffts
