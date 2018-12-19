@@ -28,6 +28,13 @@ module mod_mom
 
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
+#else
+    !$OMP PARALLEL DO DEFAULT(none) &
+    !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
+    !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
+    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
+#endif
     do k=1,nz
       do j=1,ny
         do i=1,nx
@@ -37,13 +44,6 @@ module mod_mom
           jm = j - 1
           ip = i + 1
           im = i - 1
-#else
-    !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
-    !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
-    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
-#endif
           uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
           uuim  = 0.25d0*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
           uvjp  = 0.25d0*( u(i,jp,k)+u(i,j,k) )*( v(ip,j ,k )+v(i,j ,k ) )

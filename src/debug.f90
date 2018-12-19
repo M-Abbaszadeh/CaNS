@@ -10,17 +10,27 @@ module mod_debug
     !
     ! compute the mean value of an observable over the entire domain
     !
+    !@cuf use cudafor
     implicit none
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(0:) :: dzlzi
     real(8), intent(in), dimension(0:,0:,0:) :: p
     real(8), intent(out) :: mean
+#ifdef USE_CUDA
+    attributes(managed):: p,dzlzi
+    integer:: istat
+#endif
     integer :: i,j,k
     mean = 0.d0
+
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP SHARED(n,p,dzlzi) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP REDUCTION(+:mean)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -28,7 +38,10 @@ module mod_debug
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+!@cuf istat=cudaDeviceSynchronize()
     call mpi_allreduce(MPI_IN_PLACE,mean,1,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     mean = mean/(1.d0*n(1)*dims(1)*n(2)*dims(2))
     return

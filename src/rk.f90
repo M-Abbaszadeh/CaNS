@@ -170,6 +170,11 @@ module mod_rk
     real(8),              dimension(n(1),n(2),n(3)) ::          dudtrkd, dvdtrkd, dwdtrkd
     real(8) :: factor1,factor2,factor12
     real(8), dimension(3) :: taux,tauy,tauz
+#ifdef USE_CUDA
+   attributes(managed):: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
+   attributes(managed):: dudtrko,dvdtrko,dwdtrko
+   integer:: istat
+#endif
     integer :: i,j,k
     real(8) :: mean
     !
