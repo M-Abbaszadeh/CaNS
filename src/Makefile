@@ -3,7 +3,7 @@ FC   = mpif90
 # flags
 BIG := # -mcmodel=medium
 DBG := # -g -fbacktrace -Wall -O0 -Wextra -pedantic -fcheck=all
-OMP := # -fopenmp
+OMP := -mp # -fopenmp
 OPT := -O3 -Mcuda=cc70
 #OPT := -O3 -Mcuda=cc70,nofma
 OTH := -DDEBUG -DTIMING -DUSE_CUDA -DUSE_NVTX #-DIMPDIFF
@@ -65,7 +65,7 @@ output.o: output.f90 io.o
 	$(FC) $(FFLAGS) -cpp -c  output.f90
 param.o: param.f90 setup.h90 bc.h90
 	$(FC) $(FFLAGS) -cpp -c  param.f90
-rk.o: rk.f90 debug.o mom.o momd.o moms.o param.o
+rk.o: rk.f90 debug.o mom.o momd.o moms.o param.o nvtx.o
 	$(FC) $(FFLAGS) -cpp -c  rk.f90
 sanity.o: sanity.f90 bound.o chkdiv.o common_mpi.o correc.o debug.o decomp_2d.o fft.o fillps.o initflow.o initmpi.o initsolver.o param.o solver.o
 	$(FC) $(FFLAGS) -cpp -c  sanity.f90
