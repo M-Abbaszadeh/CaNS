@@ -306,6 +306,9 @@ program cans
 #endif
       dpdl(:) = dpdl(:) + f(:)
 #ifdef DEBUG
+ #ifdef USE_NVTX
+      call nvtxStartRange("chkmean", irk)
+ #endif
       if(is_forced(1)) then
         call chkmean(n,dzf/lz,up,meanvel)
         if(myid.eq.0) print*,'Mean u = ', meanvel
@@ -318,6 +321,9 @@ program cans
         call chkmean(n,dzc/lz,wp,meanvel)
         if(myid.eq.0) print*,'Mean w = ', meanvel
       endif
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
 #endif
 
  #ifdef USE_NVTX
@@ -351,8 +357,12 @@ program cans
       call correc(n,dli,dzci,dtrk,pp,up,vp,wp,u,v,w)
  #ifdef USE_NVTX
       call nvtxEndRange
+      call nvtxStartRange("bounduvw", irk+8)
  #endif
       call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
 #ifdef IMPDIFF
       alphai = alpha**(-1)
       !$OMP PARALLEL DO DEFAULT(none) &
@@ -380,9 +390,9 @@ program cans
 
 #ifdef USE_CUDA
      !$cuf kernel do(3) <<<*,*>>> 
-       do k=0,ktot+1    ! Not sure if only for 1:n. To be safe copying the whole array
-        do j=0,jmax+1
-         do i=0,imax+1
+       do k=1,n(3)    
+        do j=1,n(2)
+         do i=1,n(1)
            p(i,j,k) = p(i,j,k) + pp(i,j,k)  
         end do
         end do
@@ -395,7 +405,13 @@ program cans
 #endif 
 
 #endif
+ #ifdef USE_NVTX
+      call nvtxStartRange("boundp", irk+9)
+ #endif
       call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
     enddo
     dpdl(:) = -dpdl(:)*dti
     if(mod(istep,icheck).eq.0) then

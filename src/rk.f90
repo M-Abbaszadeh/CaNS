@@ -63,6 +63,9 @@ module mod_rk
 
 !@cuf istat=cudaDeviceSynchronize()
 
+ #ifdef USE_NVTX
+      call nvtxStartRange("update_cuf",1)
+ #endif
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -85,6 +88,7 @@ module mod_rk
 !@cuf istat=cudaDeviceSynchronize()
 
  #ifdef USE_NVTX
+      call nvtxEndRange
       call nvtxStartRange("momxad",4)
  #endif
     call momxad(n(1),n(2),n(3),dli(1),dli(2),dli(3),dzci,dzfi,dzflzi,visc,u,v,w,dudtrk,taux)
@@ -108,6 +112,9 @@ module mod_rk
     tauxo(:) = taux(:)
     tauyo(:) = tauy(:)
     tauzo(:) = tauz(:)
+ #ifdef USE_NVTX
+      call nvtxStartRange("update_cuf2",1)
+ #endif
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -132,6 +139,10 @@ module mod_rk
     !$OMP END PARALLEL DO
 #endif
 
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("chkmean",1)
+ #endif
     !
     ! bulk velocity forcing
     !
@@ -148,6 +159,9 @@ module mod_rk
       call chkmean(n,dzclzi,wp,mean)
       f(3) = velf(3) - mean
     endif
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
     return
   end subroutine rk
   subroutine rk_id(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l,u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
