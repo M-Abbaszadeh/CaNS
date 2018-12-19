@@ -79,13 +79,13 @@ program cans
     real(8), dimension(n(1),n(3),0:1) :: y
     real(8), dimension(n(1),n(2),0:1) :: z
   end type rhs_bound 
+  integer :: i,j,k,im,ip,jm,jp,km,kp
 #ifdef IMPDIFF
   type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw
   real(8), dimension(imax,jmax) :: lambdaxyu,lambdaxyv,lambdaxyw
   real(8), dimension(ktot) :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
   real(8) :: normfftu,normfftv,normfftw
   real(8) :: alpha,alphai
-  integer :: i,j,k,im,ip,jm,jp,km,kp
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
 #endif
   type(rhs_bound) :: rhsbp
@@ -103,6 +103,7 @@ program cans
 #ifdef TIMING
   real(8) :: dt12,dt12av,dt12min,dt12max
 #endif
+  real(8):: f1d,f2d,f3d
   character(len=7) :: fldnum
   integer :: lenr,kk
   logical :: kill
@@ -215,10 +216,49 @@ program cans
  #ifdef USE_NVTX
       call nvtxEndRange
  #endif
+
 #endif
-      if(is_forced(1)) up(1:n(1),1:n(2),1:n(3)) = up(1:n(1),1:n(2),1:n(3)) + f(1)
-      if(is_forced(2)) vp(1:n(1),1:n(2),1:n(3)) = vp(1:n(1),1:n(2),1:n(3)) + f(2)
-      if(is_forced(3)) wp(1:n(1),1:n(2),1:n(3)) = wp(1:n(1),1:n(2),1:n(3)) + f(3)
+ #ifdef USE_NVTX
+      call nvtxStartRange("is_forced", irk+1)
+ #endif
+      if(is_forced(1)) then
+      f1d=f(1)
+      !$cuf kernel do(3) <<<*,*>>> 
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           up(i,j,k) = up(i,j,k) + f1d
+        end do
+        end do
+       end do
+      end if
+
+      if(is_forced(2)) then
+      f2d=f(2)
+      !$cuf kernel do(3) <<<*,*>>> 
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           vp(i,j,k) = vp(i,j,k) + f2d
+        end do
+        end do
+       end do
+      end if
+
+      if(is_forced(3)) then
+      !$cuf kernel do(3) <<<*,*>>> 
+      f3d=f(3)
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           wp(i,j,k) = wp(i,j,k) + f3d
+        end do
+        end do
+       end do
+      end if
+ #ifdef USE_NVTX
+      call nvtxEndRange
+ #endif
 #ifdef IMPDIFF
       alpha = -1.d0/(.5d0*visc*dtrk)
       !$OMP WORKSHARE
@@ -273,10 +313,23 @@ program cans
         if(myid.eq.0) print*,'Mean w = ', meanvel
       endif
 #endif
+
+ #ifdef USE_NVTX
+      call nvtxStartRange("bounduvw", irk+5)
+ #endif
       call bounduvw(cbcvel,n,bcvel,no_outflow,dl,dzc,dzf,up,vp,wp) ! outflow BC only at final velocity
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("fillps", irk+6)
+ #endif
       call fillps(n,dli,dzfi,dtrki,up,vp,wp,pp)
+ #ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("updt_rhs_b", irk+7)
+ #endif
       call updt_rhs_b((/'c','c','c'/),cbcpre,n,rhsbp%x,rhsbp%y,rhsbp%z,pp(1:imax,1:jmax,1:ktot))
  #ifdef USE_NVTX
+      call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
  #endif
       call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:imax,1:jmax,1:ktot))
