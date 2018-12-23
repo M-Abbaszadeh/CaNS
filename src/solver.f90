@@ -30,8 +30,13 @@ module mod_solver
     real(8), allocatable, dimension(:,:,:), device :: py_t
     complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
 #endif
+    integer :: dotrans
     integer, dimension(3) :: ng
     integer :: q
+
+    dotrans = 0
+    if( dims(1)*dims(2) .ne. 1) dotrans = 1
+
     ng(:) = n(:)
     ng(1:2) = ng(1:2)*dims(1:2)
     allocate(px(ng(1),ng(2)/dims(1),ng(3)/dims(2)))
@@ -43,6 +48,21 @@ module mod_solver
     allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
     allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
 
+    istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, 0 )
+    istat = cudaMemAdvise( py, size(py), cudaMemAdviseSetPreferredLocation, 0 )
+    istat = cudaMemAdvise( pz, size(pz), cudaMemAdviseSetPreferredLocation, 0 )
+
+    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), 0, 0)
+    istat = cudaMemPrefetchAsync( pz, size(pz), 0, 0)
+
+    if(dotrans) then
+      istat = cudaMemPrefetchAsync( px, size(px), cudaCpuDeviceId, 0)
+      istat = cudaMemPrefetchAsync( py, size(py), cudaCpuDeviceId, 0)
+    else
+      istat = cudaMemPrefetchAsync( px, size(px), 0, 0)
+      istat = cudaMemPrefetchAsync( py, size(py), 0, 0)
+    endif
+
     !$cuf kernel do(3) <<<*,*>>>
 #endif
     do k=1,ng(3)
@@ -53,13 +73,32 @@ module mod_solver
     enddo
     enddo
     !
-    !call transpose_z_to_x(pz,px)
-    call transpose_z_to_y(pz,py)
-    call transpose_y_to_x(py,px)
+    if(dotrans) then
+#ifdef USE_CUDA
+      istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
+#endif
+      !call transpose_z_to_x(pz,px)
+      call transpose_z_to_y(pz,py)
+      call transpose_y_to_x(py,px)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)
+      do j=1,ng(2)/dims(2)
+      do i=1,ng(1)/dims(1)
+        px(i,j,k) = pz(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( px, pz, size(px), cudaMemcpyDeviceToDevice )
+    endif
 
 #ifdef USE_CUDA
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),0,0)
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-    !$cuf kernel do(2) <<<*,*>>>
+!
+!$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
       do i=1,(ng(1)/2)+1
@@ -72,13 +111,31 @@ module mod_solver
       end do
     end do
     end do
+
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
 #else
     call fftd(arrplan(1,1),px) ! fwd transform in x
 #endif
     !
-    call transpose_x_to_y(px,py)
+    if(dotrans) then
+      call transpose_x_to_y(px,py)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)/dims(2)
+      do j=1,ng(2)
+      do i=1,ng(1)/dims(1)
+        py(i,j,k) = px(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( py, px, size(px), cudaMemcpyDeviceToDevice )
+    endif
 
 #ifdef USE_CUDA
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),0,0)
+
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
@@ -90,7 +147,7 @@ module mod_solver
 
     istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
 
-    !$cuf kernel do(2) <<<*,*>>>
+!$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
       do i=1,(ng(2)/2)+1
@@ -103,11 +160,28 @@ module mod_solver
       end do
     end do
     end do
+
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
 #else
     call fftd(arrplan(1,2),py) ! fwd transform in y
 #endif
     !
-    call transpose_y_to_z(py,pz)
+    if(dotrans) then
+      call transpose_y_to_z(py,pz)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)
+      do j=1,ng(2)/dims(2)
+      do i=1,ng(1)/dims(1)
+        pz(i,j,k) = py(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( pz, py, size(pz), cudaMemcpyDeviceToDevice )
+    endif
+
 
     q = 0
     if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
@@ -115,17 +189,36 @@ module mod_solver
       call gaussel_periodic(n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
     else
 #ifdef USE_CUDA
+      istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),0,0)
+      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),0,0)
       call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
+      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
 #else
       call gaussel(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
 #endif
     endif
     !
-    call transpose_z_to_y(pz,py)
+    if(dotrans) then
+      call transpose_z_to_y(pz,py)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)/dims(2)
+      do j=1,ng(2)
+      do i=1,ng(1)/dims(1)
+        py(i,j,k) = pz(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( py, pz, size(py), cudaMemcpyDeviceToDevice )
+    endif
 
 #ifdef USE_CUDA
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),0,0)
+
     pyc_t = (0.d0,0.d0)
-    !$cuf kernel do(2) <<<*,*>>>
+!$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
       do i=1,(ng(2)/2)+1
@@ -149,14 +242,32 @@ module mod_solver
     enddo
     enddo
     enddo
+
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
 #else
     call ffti(arrplan(2,2),py) ! bwd transform in y
 #endif
     !
-    call transpose_y_to_x(py,px)
+    if(dotrans) then
+      call transpose_y_to_x(py,px)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)/dims(2)
+      do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        px(i,j,k) = py(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( px, py, size(px), cudaMemcpyDeviceToDevice )
+    endif
 
 #ifdef USE_CUDA
-    !$cuf kernel do(2) <<<*,*>>>
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),0,0)
+
+!$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
       do i=1,(ng(1)/2)+1
@@ -171,16 +282,34 @@ module mod_solver
     end do
 
     istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
+
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
 #else
     call ffti(arrplan(2,1),px) ! bwd transform in x
 #endif
     !
-    !call transpose_x_to_z(px,pz)
-    call transpose_x_to_y(px,py)
-    call transpose_y_to_z(py,pz)
+    if(dotrans) then
+      !call transpose_x_to_z(px,pz)
+      call transpose_x_to_y(px,py)
+      call transpose_y_to_z(py,pz)
+    else
+#ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>>
+#endif
+      do k=1,ng(3)
+      do j=1,ng(2)/dims(2)
+      do i=1,ng(1)/dims(1)
+        pz(i,j,k) = px(i,j,k)
+      enddo
+      enddo
+      enddo
+      !istat = cudaMemcpy( pz, px, size(pz), cudaMemcpyDeviceToDevice )
+    endif
 
 #ifdef USE_CUDA
-    !$cuf kernel do(3) <<<*,*>>>
+    if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),0,0)
+
+!$cuf kernel do(3) <<<*,*>>>
 #endif
     do k=lbound(pz,3),ubound(pz,3)
     do j=lbound(pz,2),ubound(pz,2)
