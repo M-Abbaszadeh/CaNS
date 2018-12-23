@@ -4,6 +4,7 @@ module mod_solver
   use mod_fft   , only: fftd,ffti
   use mod_param , only: dims
 #ifdef USE_CUDA
+  use cudafor
   use mod_fftw_param
 #endif
   implicit none
