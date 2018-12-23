@@ -1,3 +1,14 @@
+module precision
+  integer, parameter :: singlePrecision = kind(0.0)
+  integer, parameter :: doublePrecision = kind(0.0d0)
+
+#ifdef SINGLE
+  integer, parameter :: fp_kind = singlePrecision
+#else
+  integer, parameter :: fp_kind = doublePrecision
+#endif
+end module precision
+
 module mod_param
 implicit none
 public

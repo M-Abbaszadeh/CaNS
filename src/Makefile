@@ -3,7 +3,7 @@ FC   = mpif90
 # flags
 BIG := # -mcmodel=medium
 DBG := # -g -fbacktrace -Wall -O0 -Wextra -pedantic -fcheck=all
-OMP := -mp # -fopenmp
+OMP := #-mp # -fopenmp
 OPT := -O3 -Mcuda=cc70
 #OPT := -O3 -Mcuda=cc70,nofma
 OTH := -DDEBUG -DTIMING -DUSE_CUDA -DUSE_NVTX #-DIMPDIFF
@@ -14,7 +14,7 @@ TARGET = cans
 #
 OBJ = bound.o chkdiv.o chkdt.o common_mpi.o correc.o debug.o fft.o fftw.o fillps.o initflow.o initgrid.o initmpi.o initsolver.o load.o main.o mom.o momd.o moms.o output.o param.o rk.o sanity.o solver.o decomp_2d.o io.o nvtx.o
 #
-LIBS = -lfftw3 -lfftw3_threads -L/usr/local/cuda/lib64 -lnvToolsExt
+LIBS = -lfftw3 -lfftw3_threads -L/usr/local/cuda/lib64 -lnvToolsExt -Mcudalib=cufft
 #
 all: $(TARGET)
 #
@@ -41,10 +41,10 @@ fillps.o: fillps.f90
 	$(FC) $(FFLAGS) -cpp -c  fillps.f90
 fft.o: fft.f90 common_mpi.o fftw.o
 	$(FC) $(FFLAGS) -cpp -c  fft.f90
-fftw.o: fftw.f90
+fftw.o: fftw.f90 param.o
 	$(FC) $(FFLAGS) -cpp -c  fftw.f90
 initflow.o: initflow.f90 common_mpi.o decomp_2d.o
-	$(FC) $(FFLAGS) -cpp -c  initflow.f90 
+	$(FC) $(FFLAGS) -Mnovect -cpp -c  initflow.f90 
 initgrid.o: initgrid.f90 param.o
 	$(FC) $(FFLAGS) -cpp -c  initgrid.f90 
 initmpi.o: initmpi.f90 decomp_2d.o common_mpi.o

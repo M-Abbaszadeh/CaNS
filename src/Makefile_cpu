@@ -40,10 +40,10 @@ fillps.o: fillps.f90
 	$(FC) $(FFLAGS) -cpp -c  fillps.f90
 fft.o: fft.f90 common_mpi.o fftw.o
 	$(FC) $(FFLAGS) -cpp -c  fft.f90
-fftw.o: fftw.f90
+fftw.o: fftw.f90 param.o
 	$(FC) $(FFLAGS) -cpp -c  fftw.f90
 initflow.o: initflow.f90 common_mpi.o decomp_2d.o
-	$(FC) $(FFLAGS) -cpp -c  initflow.f90 
+	$(FC) $(FFLAGS) -Mnovect -cpp -c  initflow.f90 
 initgrid.o: initgrid.f90 param.o
 	$(FC) $(FFLAGS) -cpp -c  initgrid.f90 
 initmpi.o: initmpi.f90 decomp_2d.o common_mpi.o
