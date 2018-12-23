@@ -94,7 +94,7 @@ program cans
   integer :: irk,istep
   real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
 #ifdef USE_CUDA
-  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko
+  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp
 #endif
   real(8) :: meanvel
   real(8), dimension(3) :: dpdl
@@ -344,7 +344,7 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
  #endif
-      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:imax,1:jmax,1:ktot))
+      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp)
  #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("boundp", irk+6)

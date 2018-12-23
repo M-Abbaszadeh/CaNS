@@ -225,6 +225,9 @@ module mod_sanity
   real(8) :: dt,dti,alpha
   real(8) :: divtot,divmax,resmax
   logical :: passed_loc
+#ifdef USE_CUDA
+  attributes(managed):: a,b,c,lambdaxy
+#endif
   passed = .true.
   !
   ! initialize velocity below with some random noise

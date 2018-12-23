@@ -25,6 +25,11 @@ module mod_fft
     integer(C_INT) :: nx_x,ny_x,nz_x, &
                       nx_y,ny_y,nz_y
     integer :: ix,iy
+#ifdef USE_CUDA
+    integer :: istat
+    integer(int_ptr_kind()) :: worksize, max_worksize
+    max_worksize = 0
+#endif
     !$ call dfftw_init_threads(ierr)
     !$ call dfftw_plan_with_nthreads(omp_get_max_threads())
     !
@@ -56,6 +61,22 @@ module mod_fft
     plan_fwd_x=fftw_plan_guru_r2r(1,iodim,2,iodim_howmany,arrx,arrx,kind_fwd,FFTW_ESTIMATE)
     plan_bwd_x=fftw_plan_guru_r2r(1,iodim,2,iodim_howmany,arrx,arrx,kind_bwd,FFTW_ESTIMATE)
     normfft = normfft*norm(1)*(nx_x+norm(2)-ix)
+
+#ifdef USE_CUDA
+        batch = ny_x*nz_x
+        istat = cufftPlan1D(cufft_plan_fwd_x,nx_x,CUFFT_D2Z,batch)
+!        istat = cufftCreate( cufft_plan_fwd_z )
+!        istat = cufftSetAutoAllocation( cufft_plan_fwd_z, 0 )
+!        istat = cufftMakePlanMany(cufft_plan_fwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
+!        max_worksize = max(worksize,max_worksize)
+
+        istat = cufftPlan1D(cufft_plan_bwd_x,nx_x,CUFFT_Z2D,batch)
+!        istat = cufftCreate( cufft_plan_bwd_z )
+!        istat = cufftSetAutoAllocation( cufft_plan_bwd_z, 0 )
+!        istat = cufftMakePlanMany(cufft_plan_bwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
+!        max_worksize = max(worksize,max_worksize)
+
+#endif
     !
     ! fft in y
     !
@@ -83,6 +104,24 @@ module mod_fft
     arrplan(2,1) = plan_bwd_x
     arrplan(1,2) = plan_fwd_y
     arrplan(2,2) = plan_bwd_y
+
+#ifdef USE_CUDA
+        batch = nx_y*nz_y
+        istat = cufftPlan1D(cufft_plan_fwd_y,ny_y,CUFFT_D2Z,batch)
+!        istat = cufftCreate( cufft_plan_fwd_z )
+!        istat = cufftSetAutoAllocation( cufft_plan_fwd_z, 0 )
+!        istat = cufftMakePlanMany(cufft_plan_fwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
+!        max_worksize = max(worksize,max_worksize)
+
+        istat = cufftPlan1D(cufft_plan_bwd_y,ny_y,CUFFT_Z2D,batch)
+!        istat = cufftCreate( cufft_plan_bwd_z )
+!        istat = cufftSetAutoAllocation( cufft_plan_bwd_z, 0 )
+!        istat = cufftMakePlanMany(cufft_plan_bwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
+!        max_worksize = max(worksize,max_worksize)
+
+#endif
+
+
     return
   end subroutine fftini
   !

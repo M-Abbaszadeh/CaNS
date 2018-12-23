@@ -1,5 +1,9 @@
 module mod_fftw_param
+  use precision
   use iso_c_binding
+#ifdef USE_CUDA
+  use cufft
+#endif
   !
   type, bind(C) :: fftw_iodim
      integer(C_INT) n, is, os
@@ -48,4 +52,12 @@ module mod_fftw_param
   type(C_PTR) :: fwd_guruplan_y,bwd_guruplan_y
   type(C_PTR) :: fwd_guruplan_z,bwd_guruplan_z
   logical :: planned=.false.
+
+#ifdef USE_CUDA
+  integer :: batch
+  integer :: cufft_plan_fwd_x, cufft_plan_bwd_x
+  integer :: cufft_plan_fwd_y, cufft_plan_bwd_y
+  complex(fp_kind),device,allocatable,dimension(:) :: cufft_workspace
+#endif
+
 end module mod_fftw_param
