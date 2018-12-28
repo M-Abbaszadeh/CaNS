@@ -4,7 +4,7 @@ module mod_mom
   use mod_common_mpi, only: ierr
   implicit none
   private
-  public momxad,momyad,momzad,momxp,momyp,momzp
+  public momxad,momyad,momzad,momxp,momyp,momzp,momp
   contains
   subroutine momxad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dudt,taux)
     !@cuf use cudafor
@@ -375,20 +375,16 @@ module mod_mom
     integer :: jp
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
-          jp = j + 1
 #else
     !
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,jp) &
     !$OMP SHARED(nx,ny,nz,dyi,p,dvdt)
+#endif
     do k=1,nz
       do j=1,ny
         jp = j + 1
         do i=1,nx
-#endif
           dvdt(i,j,k) = - dyi*( p(i,jp,k)-p(i,j,k) )
         enddo
       enddo
@@ -416,19 +412,15 @@ module mod_mom
     !
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
-        kp = k + 1
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,kp) &
     !$OMP SHARED(nx,ny,nz,p,dwdt,dzci)
+#endif
     do k=1,nz
       kp = k + 1
       do j=1,ny
         do i=1,nx
-#endif
           dwdt(i,j,k) = - dzci(k)*( p(i,j,kp)-p(i,j,k) )
         enddo
       enddo
@@ -439,4 +431,48 @@ module mod_mom
   !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momzp
+!
+! Combined momxp,momyp,momzp
+!
+  subroutine momp(nx,ny,nz,dxi,dyi,dzci,p,dudt,dvdt,dwdt)
+    !@cuf use cudafor
+    implicit none
+    integer, intent(in) :: nx,ny,nz
+    real(8), intent(in) :: dxi,dyi 
+    real(8), intent(in), dimension(0:) :: dzci
+    real(8), dimension(0:,0:,0:), intent(in) :: p
+    real(8), dimension(:,:,:), intent(out) :: dudt,dvdt,dwdt
+#ifdef USE_CUDA
+    attributes(managed):: p,dudt,dvdt,dwdt,dzci
+    integer:: istat
+#endif
+    integer :: ip,jp,kp
+    integer :: i,j,k
+    !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
+    !$OMP PARALLEL DO DEFAULT(none) &
+    !$OMP PRIVATE(i,j,k,kp) &
+    !$OMP SHARED(nx,ny,nz,p,dwdt,dzci)
+#endif
+    do k=1,nz
+      kp = k + 1
+      do j=1,ny
+        jp = j + 1
+        do i=1,nx
+          ip = i + 1
+          dudt(i,j,k) = - dxi*    ( p(ip,j,k)-p(i,j,k) )
+          dvdt(i,j,k) = - dyi*    ( p(i,jp,k)-p(i,j,k) )
+          dwdt(i,j,k) = - dzci(k)*( p(i,j,kp)-p(i,j,k) )
+        enddo
+      enddo
+    enddo
+#ifndef USE_CUDA
+    !$OMP END PARALLEL DO
+#endif
+  !@cuf istat=cudaDeviceSynchronize()
+    return
+  end subroutine momp
+
 end module mod_mom

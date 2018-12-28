@@ -1,7 +1,7 @@
 module mod_rk
   use mod_param, only: is_forced,velf
   use mod_debug, only: chkmean
-  use mod_mom  , only: momxad,momyad,momzad,momxp,momyp,momzp
+  use mod_mom  , only: momxad,momyad,momzad,momxp,momyp,momzp,momp
   use mod_momd , only: momxpd,momypd,momzpd,momxa,momya,momza
   use mod_moms , only: momsad
 #ifdef USE_NVTX
@@ -43,23 +43,30 @@ module mod_rk
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
     !
- #ifdef USE_NVTX
-      call nvtxStartRange("momxp",1)
- #endif
-    call momxp(n(1),n(2),n(3),dli(1),p,dudtrk)
- #ifdef USE_NVTX
+! #ifdef USE_NVTX
+!      call nvtxStartRange("momxp",1)
+! #endif
+!    call momxp(n(1),n(2),n(3),dli(1),p,dudtrk)
+! #ifdef USE_NVTX
+!      call nvtxEndRange
+!      call nvtxStartRange("momyp",2)
+! #endif
+!    call momyp(n(1),n(2),n(3),dli(2),p,dvdtrk)
+! #ifdef USE_NVTX
+!      call nvtxEndRange
+!      call nvtxStartRange("momzp",3)
+! #endif
+!    call momzp(n(1),n(2),n(3),dzci  ,p,dwdtrk)
+! #ifdef USE_NVTX
+!      call nvtxEndRange
+! #endif
+#ifdef USE_NVTX
+      call nvtxStartRange("momp",1)
+#endif
+     call momp(n(1),n(2),n(3),dli(1),dli(2),dzci,p,dudtrk,dvdtrk,dwdtrk)
+#ifdef USE_NVTX
       call nvtxEndRange
-      call nvtxStartRange("momyp",2)
- #endif
-    call momyp(n(1),n(2),n(3),dli(2),p,dvdtrk)
- #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("momzp",3)
- #endif
-    call momzp(n(1),n(2),n(3),dzci  ,p,dwdtrk)
- #ifdef USE_NVTX
-      call nvtxEndRange
- #endif
+#endif
 
 !@cuf istat=cudaDeviceSynchronize()
 
