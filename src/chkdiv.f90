@@ -31,25 +31,19 @@ module mod_chkdiv
     divmax = 0.d0
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
-    do k=1,n(3)
-       do j=1,n(2)
-          do i=1,n(1)
-           km = k-1
-           jm = j-1
-           im = i-1
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP  SHARED(n,u,v,w,dxi,dyi,dzfi) &
     !$OMP  PRIVATE(i,j,k,im,jm,km,div) &
     !$OMP  REDUCTION(+:divtot) &
     !$OMP  REDUCTION(max:divmax)
+#endif
     do k=1,n(3)
        km = k-1
        do j=1,n(2)
           jm = j-1
           do i=1,n(1)
              im = i-1
-#endif
              div = (w(i,j,k)-w(i,j,km))*dzfi(k) + &
                    (v(i,j,k)-v(i,jm,k))*dyi     + &
                    (u(i,j,k)-u(im,j,k))*dxi
