@@ -18,6 +18,9 @@ module mod_bound
     real(8), intent(in), dimension(0:) :: dzc,dzf
     real(8), intent(inout), dimension(0:,0:,0:) :: u,v,w
     integer :: q,idir,sgn,ioutflowdir
+#ifdef USE_CUDA
+    attributes(managed)::u,v,w
+#endif
     !
     call updthalo((/n(1),n(2)/),1,u)
     call updthalo((/n(1),n(2)/),2,u)
@@ -77,6 +80,9 @@ module mod_bound
     real(8), intent(in), dimension(3) :: dl
     real(8), intent(in), dimension(0:) :: dzc,dzf
     real(8), intent(inout), dimension(0:,0:,0:) :: p
+#ifdef USE_CUDA
+    attributes(managed)::p
+#endif
     !
     call updthalo((/n(1),n(2)/),1,p)
     call updthalo((/n(1),n(2)/),2,p)
@@ -106,6 +112,10 @@ module mod_bound
     real(8), intent(in) :: rvalue,dr
     real(8), intent(inout), dimension(0:,0:,0:) :: p
     real(8) :: factor,sgn
+#ifdef USE_CUDA
+    attributes(managed):: p
+    integer::  i,j,k
+#endif
     !
     factor = rvalue
     if(ctype.eq.'D'.and.stag) then
@@ -131,109 +141,281 @@ module mod_bound
         !p(:,0  ,:) = p(:,n,:)
         !p(:,n+1,:) = p(:,1,:)
       case(3)
+       #ifdef USE_CUDA
+       !$cuf kernel do(2) <<<*,*>>>
+        do j=lbound(p,2),ubound(p,2)
+         do i=lbound(p,1),ubound(p,1)
+           p(i,j,0  ) = p(i,j,n)
+           p(i,j,n+1) = p(i,j,1)
+         end do
+        end do
+       #else
         !$OMP WORKSHARE
         p(:,:,0  ) = p(:,:,n)
         p(:,:,n+1) = p(:,:,1)
         !$OMP END WORKSHARE
+       #endif
       end select
     case('D','N')
       if(stag) then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                   p(0  ,j,k) = factor+sgn*p(1,j,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
-            p(0  ,:,:) = factor+sgn*p(1,:,:)
+             p(0  ,:,:) = factor+sgn*p(1,:,:)
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                  p(n+1,j,k) = factor+sgn*p(n,j,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(n+1,:,:) = factor+sgn*p(n,:,:)
             !$OMP END WORKSHARE
+           #endif
           endif
         case(2)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,0  ,k) = factor+sgn*p(i,1,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,0  ,:) = factor+sgn*p(:,1,:)
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,n+1,k) = factor+sgn*p(i,n,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,n+1,:) = factor+sgn*p(:,n,:)
             !$OMP END WORKSHARE
+           #endif
           endif
         case(3)
           if    (ibound.eq.0) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,0  ) = factor+sgn*p(i,j,1)
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,0  ) = factor+sgn*p(:,:,1)
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,n+1) = factor+sgn*p(i,j,n)
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,n+1) = factor+sgn*p(:,:,n)
             !$OMP END WORKSHARE
+            #endif
           endif
         end select
       elseif(.not.stag.and.ctype.eq.'D') then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                  p(0,j,k) = factor 
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(0,:,:) = factor 
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                  p(n,j,k) = factor 
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(n,:,:) = factor
             !$OMP END WORKSHARE
+           #endif
           endif
         case(2)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,0  ,k) = factor
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,0,:) = factor 
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,n  ,k) = factor
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,n,:) = factor
             !$OMP END WORKSHARE
+           #endif
           endif
         case(3)
           if    (ibound.eq.0) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,0) = factor
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,0) = factor 
             !$OMP END WORKSHARE
+            #endif
           elseif(ibound.eq.1) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,n) = factor
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,n) = factor
             !$OMP END WORKSHARE
+            #endif
           endif
         end select
       elseif(.not.stag.and.ctype.eq.'N') then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                  p(0,j,k) = 1.d0*factor + p(1  ,j,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(0,  :,:) = 1.d0*factor + p(1  ,:,:)
             !$OMP END WORKSHARE
+           #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do j=lbound(p,2),ubound(p,2)
+                 p(n+1,j,k) = 2.d0*factor + p(n-1,j,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(n+1,:,:) = 2.d0*factor + p(n-1,:,:)
             !$OMP END WORKSHARE
+           #endif
           endif
         case(2)
           if    (ibound.eq.0) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,0  ,k) = 1.d0*factor + p(i,1  ,k) 
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,0  ,:) = 1.d0*factor + p(:,1  ,:) 
             !$OMP END WORKSHARE
+            #endif
           elseif(ibound.eq.1) then
+           #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+               do k=lbound(p,3),ubound(p,3)
+                 do i=lbound(p,1),ubound(p,1)
+                  p(i,n+1,k) = 2.d0*factor + p(i,n-1,k)
+                 end do
+               end do
+           #else
             !$OMP WORKSHARE
             p(:,n+1,:) = 2.d0*factor + p(:,n-1,:)
             !$OMP END WORKSHARE
+           #endif
           endif
         case(3)
           if    (ibound.eq.0) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,0  ) = 1.d0*factor + p(i,j,1  )
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,0  ) = 1.d0*factor + p(:,:,1  )
             !$OMP END WORKSHARE
+            #endif
           elseif(ibound.eq.1) then
+            #ifdef USE_CUDA
+             !$cuf kernel do(2) <<<*,*>>>
+              do j=lbound(p,2),ubound(p,2)
+               do i=lbound(p,1),ubound(p,1)
+                 p(i,j,n+1) = 2.d0*factor + p(i,j,n-1)
+               end do
+              end do
+             #else
             !$OMP WORKSHARE
             p(:,:,n+1) = 2.d0*factor + p(:,:,n-1)
             !$OMP END WORKSHARE
+            #endif
           endif
         end select
       endif
@@ -395,34 +577,87 @@ module mod_bound
     real(8), intent(inout), dimension(1:,1:,1:) :: p
     integer, dimension(3) :: q
     integer :: idir
+#ifdef USE_CUDA
+    attributes(managed)::p,rhsbx,rhsby,rhsbz
+    integer:: i,j,k,indx
+#endif
     q(:) = 0
     do idir = 1,3
       if(c_or_f(idir).eq.'f'.and.cbc(1,idir).eq.'D') q(idir) = 1
     enddo
     if(left.eq.MPI_PROC_NULL) then
+    #ifdef USE_CUDA
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do j=lbound(p,2),ubound(p,2)
+        p(1   ,j,k) = p(1   ,j,k) + rhsbx(j,k,0)
+       end do
+      end do
+     #else
       !$OMP WORKSHARE
       p(1   ,:,:) = p(1   ,:,:) + rhsbx(:,:,0)
       !$OMP END WORKSHARE
+     #endif
     endif  
     if(right.eq.MPI_PROC_NULL) then
+    #ifdef USE_CUDA
+     indx=n(1)-q(1)
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do j=lbound(p,2),ubound(p,2)
+        p(indx,j,k) = p(indx,j,k) + rhsbx(j,k,1)
+       end do
+      end do
+     #else
       !$OMP WORKSHARE
       p(n(1)-q(1),:,:) = p(n(1)-q(1),:,:) + rhsbx(:,:,1)
       !$OMP END WORKSHARE
+     #endif
     endif
     if(front.eq.MPI_PROC_NULL) then
+    #ifdef USE_CUDA
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do i=lbound(p,1),ubound(p,1)
+        p(i,1   ,k) = p(i,1   ,k) + rhsby(i,k,0)
+       end do
+      end do
+     #else
       !$OMP WORKSHARE
       p(:,1   ,:) = p(:,1   ,:) + rhsby(:,:,0)
       !$OMP END WORKSHARE
+     #endif
     endif
     if(back.eq.MPI_PROC_NULL) then
+    #ifdef USE_CUDA
+     indx=n(2)-q(2)
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do i=lbound(p,1),ubound(p,1)
+        p(i,indx,k) = p(i,indx,k) + rhsby(i,k,1)
+       end do
+      end do
+     #else
       !$OMP WORKSHARE
       p(:,n(2)-q(2),:) = p(:,n(2)-q(2),:) + rhsby(:,:,1)
       !$OMP END WORKSHARE
+     #endif
     endif
+    #ifdef USE_CUDA
+     indx=n(3)-q(3)
+     !$cuf kernel do(2) <<<*,*>>>
+      do j=lbound(p,2),ubound(p,2)
+       do i=lbound(p,1),ubound(p,1)
+        p(i,j,1   ) = p(i,j,1   ) + rhsbz(i,j,0)
+        p(i,j,indx) = p(i,j,indx) + rhsbz(i,j,1)
+       end do
+      end do
+     #else
     !$OMP WORKSHARE
     p(:,:,1   ) = p(:,:,1   ) + rhsbz(:,:,0)
     p(:,:,n(3)-q(3)) = p(:,:,n(3)-q(3)) + rhsbz(:,:,1)
     !$OMP END WORKSHARE
+    #endif
     return
   end subroutine updt_rhs_b
   !
@@ -431,6 +666,10 @@ module mod_bound
     integer, dimension(2), intent(in) :: n
     integer, intent(in) :: idir
     real(8), dimension(0:,0:,0:), intent(inout) :: p
+#ifdef USE_CUDA
+    attributes(managed)::p
+    integer:: i,j,k, indx
+#endif
     !integer :: requests(4), statuses(MPI_STATUS_SIZE,4)
     !
     !  this subroutine updates the halos that store info
@@ -438,6 +677,23 @@ module mod_bound
     !
     select case(idir)
     case(1) ! x direction
+    if( left .eq.  right ) then
+#ifdef USE_CUDA
+     indx=n(1)
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do j=lbound(p,2),ubound(p,2)
+          p(indx+1,j,k)=p(   1,j,k)
+          p(0     ,j,k)=p(indx,j,k)
+       end do
+      end do
+#else
+    !$OMP WORKSHARE
+      p(n(1)+1,:,:)=p(   1,:,:)
+      p(0     ,:,:)=p(n(1),:,:)
+    !$OMP END WORKSHARE
+#endif
+    else
       call MPI_SENDRECV(p(1     ,0,0),1,xhalo,left ,0, &
                         p(n(1)+1,0,0),1,xhalo,right,0, &
                         comm_cart,status,ierr)
@@ -453,7 +709,25 @@ module mod_bound
          !call MPI_ISSEND(p(1   ,0,0),1,xhalo,left ,0, &
          !               comm_cart,requests(3),error)
          !call MPI_WAITALL(4, requests, statuses, error)
+    endif
     case(2) ! y direction
+    if(front .eq. back ) then
+#ifdef USE_CUDA
+     indx=n(2)
+     !$cuf kernel do(2) <<<*,*>>>
+      do k=lbound(p,3),ubound(p,3)
+       do i=lbound(p,1),ubound(p,1)
+          p(i,indx+1,k)=p(i,   1,k)
+          p(i,0     ,k)=p(i,indx,k)
+       end do
+      end do
+#else
+    !$OMP WORKSHARE
+      p(:,n(2)+1,:)=p(:, 1,:)
+      p(:, 0     ,:)=p(:,n(2),:)
+    !$OMP END WORKSHARE
+#endif
+    else
       call MPI_SENDRECV(p(0,1     ,0),1,yhalo,front,0, &
                         p(0,n(2)+1,0),1,yhalo,back ,0, &
                         comm_cart,status,ierr)
@@ -469,6 +743,7 @@ module mod_bound
          !call MPI_ISSEND(p(0,n(2),0),1,yhalo,back ,1, &
          !               comm_cart,requests(4),error)
          !call MPI_WAITALL(4, requests, statuses, error)
+     endif
     end select
     return
   end subroutine updthalo

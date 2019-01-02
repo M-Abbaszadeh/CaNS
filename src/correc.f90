@@ -18,7 +18,7 @@ module mod_correc
     real(8) :: factori,factorj
     real(8), dimension(0:n(3)+1) :: factork
 #ifdef USE_CUDA
-    attributes(managed):: p,up,vp,wp,u,v,w,factork
+    attributes(managed):: p,up,vp,wp,u,v,w,factork,dzci
     integer:: istat
 #endif
     integer :: i,j,k,ip,jp,kp
@@ -27,10 +27,14 @@ module mod_correc
     !
     factori = dt*dli(1)
     factorj = dt*dli(2)
-    factork = dt*dzci!dli(3)
 #ifdef USE_CUDA
+    !$cuf kernel do(1) <<<*,*>>>
+    do k=0,n(3)+1
+     factork(k) = dt*dzci(k)
+    end do
     !$cuf kernel do(3) <<<*,*>>>
 #else
+    factork = dt*dzci!dli(3)
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP SHARED(n,factori,factorj,factork,u,v,w,up,vp,wp,p) &
     !$OMP PRIVATE(i,j,k,ip,jp,kp)

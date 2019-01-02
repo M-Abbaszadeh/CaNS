@@ -75,9 +75,15 @@ program cans
   real(8), dimension(ktot) :: ap,bp,cp
   real(8) :: normfftp
   type rhs_bound
+#ifdef USE_CUDA
+    real(8), dimension(n(2),n(3),0:1), managed :: x
+    real(8), dimension(n(1),n(3),0:1), managed :: y
+    real(8), dimension(n(1),n(2),0:1), managed :: z
+#else
     real(8), dimension(n(2),n(3),0:1) :: x
     real(8), dimension(n(1),n(3),0:1) :: y
     real(8), dimension(n(1),n(2),0:1) :: z
+#endif
   end type rhs_bound 
   integer :: i,j,k,im,ip,jm,jp,km,kp
 #ifdef IMPDIFF
@@ -94,7 +100,7 @@ program cans
   integer :: irk,istep
   real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
 #ifdef USE_CUDA
-  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp
+  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
 #endif
   real(8) :: meanvel
   real(8), dimension(3) :: dpdl
