@@ -453,8 +453,8 @@ module mod_mom
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(i,j,k,kp) &
-    !$OMP SHARED(nx,ny,nz,p,dwdt,dzci)
+    !$OMP PRIVATE(i,j,k,ip,jp,kp) &
+    !$OMP SHARED(nx,ny,nz,p,dudt,dvdt,dwdt,dzci,dxi,dyi)
 #endif
     do k=1,nz
       kp = k + 1
