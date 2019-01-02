@@ -350,7 +350,8 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
  #endif
-      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:n(1),1:n(2),1:n(3)))
+      !call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:n(1),1:n(2),1:n(3)))
+      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp)
  #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("boundp", irk+6)
