@@ -36,12 +36,12 @@ module mod_mom
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
 #endif
     do k=1,nz
+      kp = k + 1
+      km = k - 1
       do j=1,ny
+        jp = j + 1
+        jm = j - 1
         do i=1,nx
-          kp = k + 1
-          km = k - 1
-          jp = j + 1
-          jm = j - 1
           ip = i + 1
           im = i - 1
           uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
@@ -129,21 +129,13 @@ module mod_mom
     !
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
-          kp = k + 1
-          km = k - 1
-          jp = j + 1
-          jm = j - 1
-          ip = i + 1
-          im = i - 1
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
     !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dvdt,dzci,dzfi)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -153,7 +145,6 @@ module mod_mom
         do i=1,nx
           ip = i + 1
           im = i - 1
-#endif
           uvip  = 0.25d0*( u(i ,j,k)+u(i ,jp,k) )*( v(i,j,k )+v(ip,j ,k) )
           uvim  = 0.25d0*( u(im,j,k)+u(im,jp,k) )*( v(i,j,k )+v(im,j ,k) )
           vvjp  = 0.25d0*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
@@ -237,21 +228,13 @@ module mod_mom
     !
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
-    do k=1,nz
-      do j=1,ny
-        do i=1,nx
-          kp = k + 1
-          km = k - 1
-          jp = j + 1
-          jm = j - 1
-          ip = i + 1
-          im = i - 1
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
     !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dwdt,dzci,dzfi)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -261,7 +244,6 @@ module mod_mom
         do i=1,nx
           ip = i + 1
           im = i - 1
-#endif
           uwip  = 0.25d0*( w(i,j,k)+w(ip,j,k) )*( u(i ,j ,k)+u(i ,j ,kp) )
           uwim  = 0.25d0*( w(i,j,k)+w(im,j,k) )*( u(im,j ,k)+u(im,j ,kp) )
           vwjp  = 0.25d0*( w(i,j,k)+w(i,jp,k) )*( v(i ,j ,k)+v(i ,j ,kp) )
