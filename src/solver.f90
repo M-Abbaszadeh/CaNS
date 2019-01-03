@@ -77,6 +77,7 @@ module mod_solver
     if(dotrans) then
 #ifdef USE_CUDA
       istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
+      !@cuf istat = cudaDeviceSynchronize()
 #endif
       !call transpose_z_to_x(pz,px)
       call transpose_z_to_y(pz,py)
@@ -114,6 +115,7 @@ module mod_solver
     end do
 
     if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
+    !@cuf istat = cudaDeviceSynchronize()
 #else
     call fftd(arrplan(1,1),px) ! fwd transform in x
 #endif
@@ -163,6 +165,7 @@ module mod_solver
     end do
 
     if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
+    !@cuf istat = cudaDeviceSynchronize()
 #else
     call fftd(arrplan(1,2),py) ! fwd transform in y
 #endif
@@ -194,6 +197,7 @@ module mod_solver
       if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),0,0)
       call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
       if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
+      !@cuf istat = cudaDeviceSynchronize()
 #else
       call gaussel(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
 #endif
@@ -245,6 +249,7 @@ module mod_solver
     enddo
 
     if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
+    !@cuf istat = cudaDeviceSynchronize()
 #else
     call ffti(arrplan(2,2),py) ! bwd transform in y
 #endif
@@ -285,6 +290,7 @@ module mod_solver
     istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
 
     if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
+    !@cuf istat = cudaDeviceSynchronize()
 #else
     call ffti(arrplan(2,1),px) ! bwd transform in x
 #endif
