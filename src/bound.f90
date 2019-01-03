@@ -1,6 +1,8 @@
 module mod_bound
   use mpi
   use mod_common_mpi, only: ierr,status,comm_cart,left,right,front,back,xhalo,yhalo
+  use mod_param     , only: dims
+
   implicit none
   private
   public boundp,bounduvw,updt_rhs_b
@@ -677,7 +679,8 @@ module mod_bound
     !
     select case(idir)
     case(1) ! x direction
-    if( left .eq.  right ) then
+    !if( .false. ) then
+    if( dims(1) .eq.  1 ) then
 #ifdef USE_CUDA
      indx=n(1)
      !$cuf kernel do(2) <<<*,*>>>
@@ -711,7 +714,8 @@ module mod_bound
          !call MPI_WAITALL(4, requests, statuses, error)
     endif
     case(2) ! y direction
-    if(front .eq. back ) then
+    !if( .false. ) then
+    if( dims(2) .eq.  1 ) then
 #ifdef USE_CUDA
      indx=n(2)
      !$cuf kernel do(2) <<<*,*>>>
