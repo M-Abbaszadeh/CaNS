@@ -1,4 +1,5 @@
 module mod_initmpi
+  !@cuf use cudafor
   use mpi
   use decomp_2d
   use mod_param     , only: dims
@@ -13,8 +14,23 @@ module mod_initmpi
     character(len=1), intent(in), dimension(0:1,3) :: bc
     integer :: ntx,nty,ntz
     logical, dimension(3) :: periods
+#ifdef USE_CUDA
+     integer:: dev, local_rank, local_comm
+#endif
     !
     call MPI_INIT(ierr)
+
+#ifdef USE_CUDA
+!  Assign a different GPU to each MPI rank
+!  TBD: need to change all the memory allocation to dynamic, otherwise all the arrays
+!  will be allocated on device 0
+    call MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, &
+         MPI_INFO_NULL, local_comm,ierr)
+    call MPI_Comm_rank(local_comm, dev,ierr)
+    print  *," MPI rank",dev," using GPU",dev
+    ierr = cudaSetDevice(dev)
+#endif
+
     periods(:) = .false.
     if( bc(0,1)//bc(1,1).eq.'PP' ) periods(1) = .true.
     if( bc(0,2)//bc(1,2).eq.'PP' ) periods(2) = .true.
@@ -44,6 +60,8 @@ module mod_initmpi
     call MPI_TYPE_VECTOR(ntz    ,ntx,ntx*nty,MPI_REAL8,yhalo,ierr)
     call MPI_TYPE_COMMIT(xhalo,ierr)
     call MPI_TYPE_COMMIT(yhalo,ierr)
+
     return
   end subroutine initmpi
 end module mod_initmpi
+
