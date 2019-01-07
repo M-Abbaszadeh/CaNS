@@ -11,7 +11,7 @@ module mod_rk
   private
   public rk,rk_id
   contains
-  subroutine rk(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l,u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+  subroutine rk(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l,u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
     !
     ! low-storage 3rd-order Runge-Kutta scheme 
     ! for time integration of the momentum equations.
@@ -28,7 +28,8 @@ module mod_rk
     real(8), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
     real(8), intent(out), dimension(0:,0:,0:) :: up,vp,wp
     real(8), intent(out), dimension(3) :: f
-    real(8),              dimension(n(1),n(2),n(3)) ::          dudtrk, dvdtrk, dwdtrk
+    !real(8),              dimension(n(1),n(2),n(3)) ::          dudtrk, dvdtrk, dwdtrk
+    real(8),              dimension(:,:,:) ::          dudtrk, dvdtrk, dwdtrk
     real(8) :: factor1,factor2,factor12
     real(8), dimension(3) :: taux,tauy,tauz
 #ifdef USE_CUDA

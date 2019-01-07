@@ -63,26 +63,30 @@ program cans
   real(8), parameter, dimension(3) :: l   = (/lx,ly,lz/)
   real(8), parameter, dimension(3) :: dl  = (/dx,dy,dz/)
   real(8), parameter, dimension(3) :: dli = (/dxi,dyi,dzi/)
-  real(8), dimension(0:imax+1,0:jmax+1,0:ktot+1) :: u,v,w,p,up,vp,wp,pp
+  !real(8), dimension(0:imax+1,0:jmax+1,0:ktot+1) :: u,v,w,p,up,vp,wp,pp
+  real(8), dimension(:,:,:),allocatable :: u,v,w,p,up,vp,wp,pp
 #ifdef USE_CUDA
   attributes(managed):: u,v,w,p,up,vp,wp,pp
 #endif
-  real(8), dimension(imax,jmax,ktot)    :: dudtrko,dvdtrko,dwdtrko
+  !real(8), dimension(imax,jmax,ktot)    :: dudtrko,dvdtrko,dwdtrko
+  real(8), dimension(:,:,:),allocatable    :: dudtrko,dvdtrko,dwdtrko
+  real(8), dimension(:,:,:),allocatable    :: dudtrk,dvdtrk,dwdtrk
   real(8), dimension(3) :: tauxo,tauyo,tauzo
   real(8), dimension(3) :: f
   type(C_PTR), dimension(2,2) :: arrplanp
-  real(8), dimension(imax,jmax) :: lambdaxyp
-  real(8), dimension(ktot) :: ap,bp,cp
+  !real(8), dimension(imax,jmax) :: lambdaxyp
+  real(8), dimension(:,:),allocatable :: lambdaxyp
+  !real(8), dimension(ktot) :: ap,bp,cp
+  real(8), dimension(:),allocatable :: ap,bp,cp
   real(8) :: normfftp
   type rhs_bound
+    !real(8), dimension(n(2),n(3),0:1) :: x
+    !real(8), dimension(n(1),n(3),0:1) :: y
+    !real(8), dimension(n(1),n(2),0:1) :: z
 #ifdef USE_CUDA
-    real(8), dimension(n(2),n(3),0:1), managed :: x
-    real(8), dimension(n(1),n(3),0:1), managed :: y
-    real(8), dimension(n(1),n(2),0:1), managed :: z
+    real(8), dimension(:,:,:),allocatable,managed :: x,y,z
 #else
-    real(8), dimension(n(2),n(3),0:1) :: x
-    real(8), dimension(n(1),n(3),0:1) :: y
-    real(8), dimension(n(1),n(2),0:1) :: z
+    real(8), dimension(:,:,:),allocatable :: x,y,z
 #endif
   end type rhs_bound 
   integer :: i,j,k,im,ip,jm,jp,km,kp
@@ -94,13 +98,15 @@ program cans
   real(8) :: alpha,alphai
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
 #endif
-  type(rhs_bound) :: rhsbp
+  type(rhs_bound),managed:: rhsbp
   real(8) :: ristep
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep
-  real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
+  !real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
+  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi
 #ifdef USE_CUDA
   attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
+  attributes(managed):: dudtrk,dvdtrk,dwdtrk
 #endif
   real(8) :: meanvel
   real(8), dimension(3) :: dpdl
@@ -116,6 +122,43 @@ program cans
   !
   !$call omp_set_num_threads(nthreadsmax)
   call initmpi(ng,cbcpre)
+
+!
+! Allocate memory.
+!
+  allocate( u(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate( v(0:imax+1,0:jmax+1,0:ktot+1))
+  allocate( w(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate( p(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate(up(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate(vp(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate(wp(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate(pp(0:imax+1,0:jmax+1,0:ktot+1)) 
+  allocate(dudtrko(imax,jmax,ktot))    
+  allocate(dvdtrko(imax,jmax,ktot))   
+  allocate(dwdtrko(imax,jmax,ktot))    
+  allocate(dudtrk(imax,jmax,ktot))    
+  allocate(dvdtrk(imax,jmax,ktot))   
+  allocate(dwdtrk(imax,jmax,ktot))    
+
+  allocate(rhsbp%x(n(2),n(3),0:1))
+  allocate(rhsbp%y(n(1),n(3),0:1))
+  allocate(rhsbp%z(n(1),n(2),0:1))
+
+  allocate(lambdaxyp(imax,jmax))
+  allocate(ap(ktot)) 
+  allocate(bp(ktot))
+  allocate(cp(ktot)) 
+
+  allocate( dzc(0:ktot+1)) 
+  allocate( dzf(0:ktot+1))
+  allocate ( zc(0:ktot+1)) 
+  allocate(  zf(0:ktot+1)) 
+  allocate(dzci(0:ktot+1)) 
+  allocate(dzfi(0:ktot+1)) 
+
+
+!!!!!!!!!
   if(myid.eq.0) print*, '******************************'
   if(myid.eq.0) print*, '*** Beginning of simulation ***'
   if(myid.eq.0) print*, '******************************'
@@ -212,7 +255,7 @@ program cans
       call nvtxStartRange("rk", irk)
  #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzf/lz,dzc/lz,visc,dt,l, &
-                 u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+                 u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
  #ifdef USE_NVTX
       call nvtxEndRange
  #endif
@@ -497,6 +540,16 @@ program cans
   call fftend(arrplanv)
   call fftend(arrplanw)
 #endif
+!
+! Deallocate memory.
+!
+  deallocate( u,v,w,p,up,vp,wp,pp)
+  deallocate(dudtrko,dvdtrko,dwdtrko)
+  deallocate(dudtrk,dvdtrk,dwdtrk)
+  deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
+  deallocate(lambdaxyp,ap,bp,cp)
+  deallocate(dzc,dzf,zc,zf,dzci,dzfi)
+
   if(myid.eq.0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
   call MPI_FINALIZE(ierr)
