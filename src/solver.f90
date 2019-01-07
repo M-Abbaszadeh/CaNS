@@ -6,6 +6,7 @@ module mod_solver
 #ifdef USE_CUDA
   use cudafor
   use mod_fftw_param
+  use mod_common_mpi, only: mydev
 #endif
   implicit none
   private
@@ -49,19 +50,19 @@ module mod_solver
     allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
     allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
 
-    istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, 0 )
-    istat = cudaMemAdvise( py, size(py), cudaMemAdviseSetPreferredLocation, 0 )
-    istat = cudaMemAdvise( pz, size(pz), cudaMemAdviseSetPreferredLocation, 0 )
+    istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, mydev )
+    istat = cudaMemAdvise( py, size(py), cudaMemAdviseSetPreferredLocation, mydev )
+    istat = cudaMemAdvise( pz, size(pz), cudaMemAdviseSetPreferredLocation, mydev )
 
-    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), 0, 0)
-    istat = cudaMemPrefetchAsync( pz, size(pz), 0, 0)
+    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), mydev, 0)
+    istat = cudaMemPrefetchAsync( pz, size(pz), mydev, 0)
 
     if(dotrans) then
       istat = cudaMemPrefetchAsync( px, size(px), cudaCpuDeviceId, 0)
       istat = cudaMemPrefetchAsync( py, size(py), cudaCpuDeviceId, 0)
     else
-      istat = cudaMemPrefetchAsync( px, size(px), 0, 0)
-      istat = cudaMemPrefetchAsync( py, size(py), 0, 0)
+      istat = cudaMemPrefetchAsync( px, size(px), mydev, 0)
+      istat = cudaMemPrefetchAsync( py, size(py), mydev, 0)
     endif
 
     !$cuf kernel do(3) <<<*,*>>>
@@ -97,7 +98,7 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),0,0)
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),mydev,0)
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
 !
 !$cuf kernel do(2) <<<*,*>>>
@@ -137,7 +138,7 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),0,0)
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),mydev,0)
 
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -193,8 +194,8 @@ module mod_solver
       call gaussel_periodic(n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
     else
 #ifdef USE_CUDA
-      istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),0,0)
-      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),0,0)
+      istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),mydev,0)
+      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),mydev,0)
       call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
       if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
       !@cuf istat = cudaDeviceSynchronize()
@@ -220,7 +221,7 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),0,0)
+    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),mydev,0)
 
     pyc_t = (0.d0,0.d0)
 !$cuf kernel do(2) <<<*,*>>>
@@ -271,7 +272,7 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),0,0)
+    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),mydev,0)
 
 !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -314,7 +315,7 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),0,0)
+    if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),mydev,0)
 
 !$cuf kernel do(3) <<<*,*>>>
 #endif

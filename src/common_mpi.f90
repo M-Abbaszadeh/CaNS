@@ -8,4 +8,7 @@ module mod_common_mpi
   integer :: comm_cart,ierr
   integer :: xhalo,yhalo
   integer :: status(MPI_STATUS_SIZE)
+#ifdef USE_CUDA
+  integer :: mydev
+#endif
 end module mod_common_mpi

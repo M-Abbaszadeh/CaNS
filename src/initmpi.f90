@@ -3,7 +3,7 @@ module mod_initmpi
   use mpi
   use decomp_2d
   use mod_param     , only: dims
-  use mod_common_mpi, only: myid,coord,comm_cart,left,right,front,back,xhalo,yhalo,ierr
+  use mod_common_mpi, only: myid,coord,comm_cart,left,right,front,back,xhalo,yhalo,ierr,mydev
   implicit none
   private
   public initmpi
@@ -24,11 +24,12 @@ module mod_initmpi
 !  Assign a different GPU to each MPI rank
 !  TBD: need to change all the memory allocation to dynamic, otherwise all the arrays
 !  will be allocated on device 0
+    mydev=0
     call MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, &
          MPI_INFO_NULL, local_comm,ierr)
-    call MPI_Comm_rank(local_comm, dev,ierr)
-    print  *," MPI rank",dev," using GPU",dev
-    ierr = cudaSetDevice(dev)
+    call MPI_Comm_rank(local_comm, mydev,ierr)
+    ierr = cudaSetDevice(mydev)
+    print  *," MPI rank",mydev," using GPU",mydev
 #endif
 
     periods(:) = .false.
