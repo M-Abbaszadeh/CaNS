@@ -92,8 +92,8 @@ program cans
   integer :: i,j,k,im,ip,jm,jp,km,kp
 #ifdef IMPDIFF
   type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw
-  real(8), dimension(imax,jmax) :: lambdaxyu,lambdaxyv,lambdaxyw
-  real(8), dimension(ktot) :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
+  real(8), dimension(:,:),allocatable :: lambdaxyu,lambdaxyv,lambdaxyw
+  real(8), dimension(:)  ,allocatable :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
   real(8) :: normfftu,normfftv,normfftw
   real(8) :: alpha,alphai
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
@@ -147,6 +147,7 @@ program cans
   allocate(dudtrk(imax,jmax,ktot))    
   allocate(dvdtrk(imax,jmax,ktot))   
   allocate(dwdtrk(imax,jmax,ktot))    
+
 #ifdef IMPDIFF
   allocate(dudtrkd(imax,jmax,ktot))    
   allocate(dvdtrkd(imax,jmax,ktot))   
@@ -161,6 +162,19 @@ program cans
   allocate(rhsbw%x(n(2),n(3),0:1))
   allocate(rhsbw%y(n(1),n(3),0:1))
   allocate(rhsbw%z(n(1),n(2),0:1))
+  allocate(lambdaxyu(imax,jmax))
+  allocate(lambdaxyv(imax,jmax))
+  allocate(lambdaxyw(imax,jmax))
+  allocate(au(ktot)) 
+  allocate(bu(ktot))
+  allocate(cu(ktot)) 
+  allocate(av(ktot)) 
+  allocate(bv(ktot))
+  allocate(cv(ktot)) 
+  allocate(aw(ktot)) 
+  allocate(bw(ktot))
+  allocate(cw(ktot)) 
+  allocate(bb(ktot))
 #endif
 
   allocate(rhsbp%x(n(2),n(3),0:1))
@@ -640,6 +654,11 @@ program cans
   deallocate(rhsbu%x,rhsbu%y,rhsbu%z)
   deallocate(rhsbv%x,rhsbv%y,rhsbv%z)
   deallocate(rhsbw%x,rhsbw%y,rhsbw%z)
+  deallocate(lambdaxyu,lambdaxyv,lambdaxyw)
+  deallocate(au,bu,cu)
+  deallocate(av,bv,cv)
+  deallocate(aw,bw,cw)
+  deallocate(bb)
 #endif
   deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
   deallocate(lambdaxyp,ap,bp,cp)
