@@ -408,7 +408,7 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("updt_rhs_b", irk+7)
  #endif
-      call updt_rhs_b((/'c','c','c'/),cbcpre,n,rhsbp%x,rhsbp%y,rhsbp%z,pp(1:n(1),1:n(2),1:n(3)))
+      call updt_rhs_b((/'c','c','c'/),cbcpre,n,rhsbp%x,rhsbp%y,rhsbp%z,pp)
  #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
@@ -467,7 +467,6 @@ program cans
         end do
         end do
        end do
-
 #else
       !$OMP WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = p(1:n(1),1:n(2),1:n(3)) + pp(1:n(1),1:n(2),1:n(3))

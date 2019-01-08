@@ -580,7 +580,7 @@ module mod_bound
     character(len=1), intent(in), dimension(0:1,3) :: cbc
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(:,:,0:) :: rhsbx,rhsby,rhsbz
-    real(8), intent(inout), dimension(1:,1:,1:) :: p
+    real(8), intent(inout), dimension(:,:,:) :: p
     integer, dimension(3) :: q
     integer :: idir
 #ifdef USE_CUDA
@@ -594,8 +594,8 @@ module mod_bound
     if(left.eq.MPI_PROC_NULL) then
     #ifdef USE_CUDA
      !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do j=lbound(p,2),ubound(p,2)
+      do k=1,n(3)
+       do j=1,n(2)
         p(1   ,j,k) = p(1   ,j,k) + rhsbx(j,k,0)
        end do
       end do
@@ -609,8 +609,8 @@ module mod_bound
     #ifdef USE_CUDA
      indx=n(1)-q(1)
      !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do j=lbound(p,2),ubound(p,2)
+      do k=1,n(3)
+       do j=1,n(2)
         p(indx,j,k) = p(indx,j,k) + rhsbx(j,k,1)
        end do
       end do
@@ -623,8 +623,8 @@ module mod_bound
     if(front.eq.MPI_PROC_NULL) then
     #ifdef USE_CUDA
      !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do i=lbound(p,1),ubound(p,1)
+      do k=1,n(3)
+       do i=1,n(1)
         p(i,1   ,k) = p(i,1   ,k) + rhsby(i,k,0)
        end do
       end do
@@ -638,8 +638,8 @@ module mod_bound
     #ifdef USE_CUDA
      indx=n(2)-q(2)
      !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do i=lbound(p,1),ubound(p,1)
+      do k=1,n(3)
+       do i=1,n(1)
         p(i,indx,k) = p(i,indx,k) + rhsby(i,k,1)
        end do
       end do
@@ -652,8 +652,8 @@ module mod_bound
     #ifdef USE_CUDA
      indx=n(3)-q(3)
      !$cuf kernel do(2) <<<*,*>>>
-      do j=lbound(p,2),ubound(p,2)
-       do i=lbound(p,1),ubound(p,1)
+      do j=1,n(2)
+       do i=1,n(1)
         p(i,j,1   ) = p(i,j,1   ) + rhsbz(i,j,0)
         p(i,j,indx) = p(i,j,indx) + rhsbz(i,j,1)
        end do
