@@ -172,7 +172,9 @@ module mod_rk
  #endif
     return
   end subroutine rk
-  subroutine rk_id(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l,u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+  subroutine rk_id(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l,u,v,w,p,& 
+                   dudtrk,dvdtrk,dwdtrk,dudtrkd,dvdtrkd,dwdtrkd, &
+                   dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
     !
     ! low-storage 3rd-order Runge-Kutta scheme 
     ! for time integration of the momentum equations with implicit diffusion.
@@ -188,13 +190,13 @@ module mod_rk
     real(8), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
     real(8), intent(out), dimension(0:,0:,0:) :: up,vp,wp
     real(8), intent(out), dimension(3) :: f
-    real(8),              dimension(n(1),n(2),n(3)) ::          dudtrk, dvdtrk, dwdtrk
-    real(8),              dimension(n(1),n(2),n(3)) ::          dudtrkd, dvdtrkd, dwdtrkd
+    real(8),              dimension(:,:,:) ::          dudtrk, dvdtrk, dwdtrk
+    real(8),              dimension(:,:,:) ::          dudtrkd, dvdtrkd, dwdtrkd
     real(8) :: factor1,factor2,factor12
     real(8), dimension(3) :: taux,tauy,tauz
 #ifdef USE_CUDA
    attributes(managed):: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
-   attributes(managed):: dudtrko,dvdtrko,dwdtrko
+   attributes(managed):: dudtrko,dvdtrko,dwdtrko,dudtrkd, dvdtrkd, dwdtrkd
    integer:: istat
 #endif
     integer :: i,j,k
@@ -204,16 +206,34 @@ module mod_rk
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
     !
+#ifdef USE_NVTX
+      call nvtxStartRange("momxpd",1)
+#endif
     call momxpd(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,dzflzi,visc,p,u,dudtrk,dudtrkd,taux)
+#ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momypd",2)
+#endif
     call momypd(n(1),n(2),n(3),dli(2),dli(2),dzci,dzfi,dzflzi,visc,p,v,dvdtrk,dvdtrkd,tauy)
+#ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momyzd",2)
+#endif
     call momzpd(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,dzflzi,visc,p,w,dwdtrk,dwdtrkd,tauz)
     f(1) = factor12*sum(taux(:)/l(:))
     f(2) = factor12*sum(tauy(:)/l(:))
     f(3) = factor12*sum(tauz(:)/l(:))
+#ifdef USE_NVTX
+      call nvtxEndRange
+#endif
     ! alternatively, calculate force from the mean velocity directly
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP SHARED(n,factor12,u,v,w,up,vp,wp,dudtrk,dvdtrk,dwdtrk)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -223,13 +243,36 @@ module mod_rk
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
+
+#ifdef USE_NVTX
+      call nvtxStartRange("momxa",1)
+#endif
     call momxa(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dudtrk)
+#ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momya",2)
+#endif
     call momya(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dvdtrk)
+#ifdef USE_NVTX
+      call nvtxEndRange
+      call nvtxStartRange("momza",2)
+#endif
     call momza(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dwdtrk)
+#ifdef USE_NVTX
+      call nvtxEndRange
+#endif
+
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP SHARED(n,factor1,factor2,up,vp,wp,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -243,7 +286,10 @@ module mod_rk
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     !
     ! bulk velocity forcing
     !
@@ -263,9 +309,13 @@ module mod_rk
     !
     ! compute rhs of helmholtz equation
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k) &
     !$OMP SHARED(n,factor12,factor2,visc,up,vp,wp,dudtrkd,dvdtrkd,dwdtrkd)
+#endif
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
@@ -275,7 +325,10 @@ module mod_rk
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine rk_id
   subroutine rk_scal(rkpar,n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,u,v,w,dsdtrko,s)

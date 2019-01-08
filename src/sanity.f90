@@ -226,7 +226,7 @@ module mod_sanity
   real(8) :: divtot,divmax,resmax
   logical :: passed_loc
 #ifdef USE_CUDA
-  attributes(managed):: a,b,c,lambdaxy,rhsbx,rhsby,rhsbz
+  attributes(managed):: a,b,bb,c,lambdaxy,rhsbx,rhsby,rhsbz
 #endif
   passed = .true.
   !

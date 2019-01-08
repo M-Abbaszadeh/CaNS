@@ -97,6 +97,12 @@ program cans
   real(8) :: normfftu,normfftv,normfftw
   real(8) :: alpha,alphai
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
+  real(8), dimension(:,:,:),allocatable    :: dudtrkd,dvdtrkd,dwdtrkd
+  #ifdef USE_CUDA
+  attributes(managed):: dudtrkd,dvdtrkd,dwdtrkd,lambdaxyu,lambdaxyv,lambdaxyw
+  attributes(managed):: au,av,aw,bu,bv,bw,bb,cu,cv,cw
+  attributes(managed):: rhsbu,rhsbv,rhsbw
+  #endif
 #endif
   type(rhs_bound):: rhsbp
   real(8) :: ristep
@@ -141,6 +147,21 @@ program cans
   allocate(dudtrk(imax,jmax,ktot))    
   allocate(dvdtrk(imax,jmax,ktot))   
   allocate(dwdtrk(imax,jmax,ktot))    
+#ifdef IMPDIFF
+  allocate(dudtrkd(imax,jmax,ktot))    
+  allocate(dvdtrkd(imax,jmax,ktot))   
+  allocate(dwdtrkd(imax,jmax,ktot))    
+
+  allocate(rhsbu%x(n(2),n(3),0:1))
+  allocate(rhsbu%y(n(1),n(3),0:1))
+  allocate(rhsbu%z(n(1),n(2),0:1))
+  allocate(rhsbv%x(n(2),n(3),0:1))
+  allocate(rhsbv%y(n(1),n(3),0:1))
+  allocate(rhsbv%z(n(1),n(2),0:1))
+  allocate(rhsbw%x(n(2),n(3),0:1))
+  allocate(rhsbw%y(n(1),n(3),0:1))
+  allocate(rhsbw%z(n(1),n(2),0:1))
+#endif
 
   allocate(rhsbp%x(n(2),n(3),0:1))
   allocate(rhsbp%y(n(1),n(3),0:1))
@@ -245,6 +266,7 @@ program cans
      dzflzi(k)=dzf(k)/lz
      dzclzi(k)=dzc(k)/lz
   enddo
+  !@cuf istat=cudaDeviceSynchronize()
   !
   ! main loop
   !
@@ -270,31 +292,31 @@ program cans
       dtrki = dtrk**(-1)
 #ifndef IMPDIFF
 
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("rk", irk)
- #endif
+      #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
                  u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
-
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
 
 #else
 
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("rk_id", irk)
- #endif
+      #endif
       call rk_id(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
-                 u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
- #ifdef USE_NVTX
+                 u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrkd,dvdtrkd,dwdtrkd, &
+                 dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
 
 #endif
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("is_forced", irk+1)
- #endif
+      #endif
       if(is_forced(1)) then
       f1d=f(1)
       !$cuf kernel do(3) <<<*,*>>> 
@@ -305,6 +327,7 @@ program cans
         end do
         end do
        end do
+  !@cuf istat=cudaDeviceSynchronize()
       end if
 
       if(is_forced(2)) then
@@ -317,6 +340,7 @@ program cans
         end do
         end do
        end do
+  !@cuf istat=cudaDeviceSynchronize()
       end if
 
       if(is_forced(3)) then
@@ -329,55 +353,92 @@ program cans
         end do
         end do
        end do
+  !@cuf istat=cudaDeviceSynchronize()
       end if
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
 
 #ifdef IMPDIFF
       alpha = -1.d0/(.5d0*visc*dtrk)
+      #ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>> 
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           up(i,j,k) = up(i,j,k) *alpha
+        end do
+        end do
+       end do
+  !@cuf istat=cudaDeviceSynchronize()
+      #else
       !$OMP WORKSHARE
       up(1:n(1),1:n(2),1:n(3)) = up(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
+      #endif
       bb(:) = bu(:) + alpha
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("solver_u", irk+3)
- #endif
-      call updt_rhs_b((/'f','c','c'/),cbcvel(:,:,1),n,rhsbu%x,rhsbu%y,rhsbu%z,up(1:n(1),1:n(2),1:n(3)))
-      call solver(n,arrplanu,normfftu,lambdaxyu,au,bb,cu,cbcvel(:,3,1),(/'f','c','c'/),up(1:n(1),1:n(2),1:n(3)))
- #ifdef USE_NVTX
+      #endif
+      call updt_rhs_b((/'f','c','c'/),cbcvel(:,:,1),n,rhsbu%x,rhsbu%y,rhsbu%z,up)
+      call solver(n,arrplanu,normfftu,lambdaxyu,au,bb,cu,cbcvel(:,3,1),(/'f','c','c'/),up)
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
+      #ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>> 
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           vp(i,j,k) = vp(i,j,k) *alpha
+        end do
+        end do
+       end do
+  !@cuf istat=cudaDeviceSynchronize()
+      #else
       !$OMP WORKSHARE
       vp(1:n(1),1:n(2),1:n(3)) = vp(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
+      #endif
       bb(:) = bv(:) + alpha
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("solver_v", irk+4)
- #endif
-      call updt_rhs_b((/'c','f','c'/),cbcvel(:,:,2),n,rhsbv%x,rhsbv%y,rhsbv%z,vp(1:n(1),1:n(2),1:n(3)))
-      call solver(n,arrplanv,normfftv,lambdaxyv,av,bb,cv,cbcvel(:,3,2),(/'c','f','c'/),vp(1:n(1),1:n(2),1:n(3)))
- #ifdef USE_NVTX
+      #endif
+      call updt_rhs_b((/'c','f','c'/),cbcvel(:,:,2),n,rhsbv%x,rhsbv%y,rhsbv%z,vp)
+      call solver(n,arrplanv,normfftv,lambdaxyv,av,bb,cv,cbcvel(:,3,2),(/'c','f','c'/),vp)
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
+      #ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>> 
+       do k=1,n(3)
+        do j=1,n(2)
+         do i=1,n(1)
+           wp(i,j,k) = wp(i,j,k) *alpha
+        end do
+        end do
+       end do
+  !@cuf istat=cudaDeviceSynchronize()
+      #else
       !$OMP WORKSHARE
       wp(1:n(1),1:n(2),1:n(3)) = wp(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
+      #endif
       bb(:) = bw(:) + alpha
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("solver_w", irk+5)
- #endif
-      call updt_rhs_b((/'c','c','f'/),cbcvel(:,:,3),n,rhsbw%x,rhsbw%y,rhsbw%z,wp(1:n(1),1:n(2),1:n(3)))
-      call solver(n,arrplanw,normfftw,lambdaxyw,aw,bb,cw,cbcvel(:,3,3),(/'c','c','f'/),wp(1:n(1),1:n(2),1:n(3)))
- #ifdef USE_NVTX
+      #endif
+      call updt_rhs_b((/'c','c','f'/),cbcvel(:,:,3),n,rhsbw%x,rhsbw%y,rhsbw%z,wp)
+      call solver(n,arrplanw,normfftw,lambdaxyw,aw,bb,cw,cbcvel(:,3,3),(/'c','c','f'/),wp)
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
 #endif
       dpdl(:) = dpdl(:) + f(:)
 #ifdef DEBUG
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("chkmean", irk)
- #endif
+      #endif
       if(is_forced(1)) then
         call chkmean(n,dzflzi,up,meanvel)
         if(myid.eq.0) print*,'Mean u = ', meanvel
@@ -390,54 +451,59 @@ program cans
         call chkmean(n,dzclzi,wp,meanvel)
         if(myid.eq.0) print*,'Mean w = ', meanvel
       endif
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
 #endif
 
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("bounduvw", irk+5)
- #endif
+      #endif
       call bounduvw(cbcvel,n,bcvel,no_outflow,dl,dzc,dzf,up,vp,wp) ! outflow BC only at final velocity
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("fillps", irk+6)
- #endif
+      #endif
       call fillps(n,dli,dzfi,dtrki,up,vp,wp,pp)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("updt_rhs_b", irk+7)
- #endif
+      #endif
       call updt_rhs_b((/'c','c','c'/),cbcpre,n,rhsbp%x,rhsbp%y,rhsbp%z,pp)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
- #endif
+      #endif
       !call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:n(1),1:n(2),1:n(3)))
       call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("boundp", irk+6)
- #endif
+      #endif
       call boundp(cbcpre,n,bcpre,dl,dzc,dzf,pp)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("correc", irk+7)
- #endif
+      #endif
       call correc(n,dli,dzci,dtrk,pp,up,vp,wp,u,v,w)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("bounduvw", irk+8)
- #endif
+      #endif
       call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
+
 #ifdef IMPDIFF
       alphai = alpha**(-1)
+      #ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>> 
+      #else
       !$OMP PARALLEL DO DEFAULT(none) &
       !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
       !$OMP SHARED(p,pp,dzfi,dzci,alphai)
+      #endif
       do k=1,n(3)
         kp = k + 1
         km = k - 1
@@ -455,10 +521,13 @@ program cans
           enddo
         enddo
       enddo
-      !$OMP END PARALLEL DO
+    #ifndef USE_CUDA
+    !$OMP END PARALLEL DO
+     #endif
+    !@cuf istat=cudaDeviceSynchronize()
 #else
 
-#ifdef USE_CUDA
+     #ifdef USE_CUDA
      !$cuf kernel do(3) <<<*,*>>> 
        do k=1,n(3)    
         do j=1,n(2)
@@ -467,20 +536,21 @@ program cans
         end do
         end do
        end do
-#else
+     !@cuf istat=cudaDeviceSynchronize()
+     #else
       !$OMP WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = p(1:n(1),1:n(2),1:n(3)) + pp(1:n(1),1:n(2),1:n(3))
       !$OMP END WORKSHARE
-#endif 
+     #endif 
 
 #endif
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxStartRange("boundp", irk+9)
- #endif
+      #endif
       call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
- #ifdef USE_NVTX
+      #ifdef USE_NVTX
       call nvtxEndRange
- #endif
+      #endif
     enddo
     dpdl(:) = -dpdl(:)*dti
     if(mod(istep,icheck).eq.0) then
@@ -565,6 +635,12 @@ program cans
   deallocate( u,v,w,p,up,vp,wp,pp)
   deallocate(dudtrko,dvdtrko,dwdtrko)
   deallocate(dudtrk,dvdtrk,dwdtrk)
+#ifdef IMPDIFF
+  deallocate(dudtrkd,dvdtrkd,dwdtrkd)
+  deallocate(rhsbu%x,rhsbu%y,rhsbu%z)
+  deallocate(rhsbv%x,rhsbv%y,rhsbv%z)
+  deallocate(rhsbw%x,rhsbw%y,rhsbw%z)
+#endif
   deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
   deallocate(lambdaxyp,ap,bp,cp)
   deallocate(dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi)

@@ -2,6 +2,7 @@ module mod_momd
   use mpi
   use mod_param     , only: dims
   use mod_common_mpi, only: ierr
+ !@cuf use cudafor
   implicit none
   private
   public momxa,momya,momza,momxpd,momypd,momzpd
@@ -15,11 +16,19 @@ module mod_momd
     real(8), dimension(:,:,:), intent(out) :: dudt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dudt,dzci,dzfi
+    integer:: istat
+#endif
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,u,v,w,dudt,dzci,dzfi)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -44,7 +53,10 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momxa
   !
@@ -57,11 +69,19 @@ module mod_momd
     real(8), dimension(:,:,:), intent(out) :: dvdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dvdt,dzci,dzfi
+    integer:: istat
+#endif
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dvdt)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -86,7 +106,10 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momya
   !
@@ -99,11 +122,19 @@ module mod_momd
     real(8), dimension(:,:,:), intent(out) :: dwdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dwdt,dzci,dzfi
+    integer:: istat
+#endif
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dwdt)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -128,7 +159,10 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine momza
   !
@@ -143,11 +177,21 @@ module mod_momd
     real(8) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
     integer :: im,ip,jm,jp,km,kp,i,j,k
     integer :: nxg,nyg,nzg
+    real(8) :: taux2d,taux3d
+#ifdef USE_CUDA
+    attributes(managed):: u,p,dudt,dudtd,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
+ 
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,p,dudt,dudtd,visc)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -170,22 +214,36 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     taux(:) = 0.
+    taux2d=0.d0
+    taux3d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do i=1,nx
         dudyp = (u(i,1 ,k)-u(i,0   ,k))*dyi*visc*dzflzi(k)
         dudym = (u(i,ny,k)-u(i,ny+1,k))*dyi*visc*dzflzi(k)
-        taux(2) = taux(2) + (dudyp+dudym)
+        taux2d = taux2d + (dudyp+dudym)
       enddo
     enddo
+    taux(2)=taux2d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do j=1,ny
       do i=1,nx
         dudzp = (u(i,j,1 )-u(i,j,0   ))*dzci(0)*visc
         dudzm = (u(i,j,nz)-u(i,j,nz+1))*dzci(nz)*visc
-        taux(3) = taux(3) + (dudzp+dudzm)
+        taux3d = taux3d + (dudzp+dudzm)
       enddo
     enddo
+    taux(3)=taux3d
+!@cuf istat=cudaDeviceSynchronize()
     call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
@@ -207,11 +265,20 @@ module mod_momd
     real(8) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
     integer :: im,ip,jm,jp,km,kp,i,j,k
     integer :: nxg,nyg,nzg
+    real(8) :: tauy1d,tauy3d
+#ifdef USE_CUDA
+    attributes(managed):: v,p,dvdt,dvdtd,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
     !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,v,p,dvdt,dvdtd,visc)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -234,22 +301,36 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     tauy(:) = 0.
+    tauy1d = 0.d0
+    tauy3d = 0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do j=1,ny
         dvdxp = (v(1 ,j,k)-v(0   ,j,k))*dxi*visc*dzflzi(k)
         dvdxm = (v(nx,j,k)-v(nx+1,j,k))*dxi*visc*dzflzi(k)
-        tauy(1) = tauy(1) + (dvdxp+dvdxm)
+        tauy1d = tauy1d + (dvdxp+dvdxm)
       enddo
     enddo
+    tauy(1)=tauy1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do j=1,ny
       do i=1,nx
         dvdzp = (v(i,j,1 )-v(i,j,0   ))*dzci(0)*visc
         dvdzm = (v(i,j,nz)-v(i,j,nz+1))*dzci(nz)*visc
-        tauy(3) = tauy(3) + (dvdzp+dvdzm)
+        tauy3d = tauy3d + (dvdzp+dvdzm)
       enddo
     enddo
+    tauy(3)=tauy3d
+    !@cuf istat=cudaDeviceSynchronize()
     call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
@@ -271,11 +352,21 @@ module mod_momd
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(8) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
     integer :: nxg,nyg,nzg
+    real(8) :: tauz1d,tauz2d
+#ifdef USE_CUDA
+    attributes(managed):: w,p,dwdt,dwdtd,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
+    !
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
     !
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,w,p,dwdt,dwdtd,visc)
+#endif
     do k=1,nz
       kp = k + 1
       km = k - 1
@@ -298,22 +389,36 @@ module mod_momd
         enddo
       enddo
     enddo
+#ifndef USE_CUDA
     !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
     tauz(:) = 0.
+    tauz1d=0.d0
+    tauz2d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do j=1,ny
         dwdxp = (w(1 ,j,k)-w(0   ,j,k))*dxi*visc*dzflzi(k)
         dwdxm = (w(nx,j,k)-w(nx+1,j,k))*dxi*visc*dzflzi(k)
-        tauz(1) = tauz(1) + (dwdxp+dwdxm)
+        tauz1d = tauz1d+ (dwdxp+dwdxm)
       enddo
     enddo
+    tauz(1)=tauz1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
     do k=1,nz
       do i=1,nx
         dwdyp = (w(i,1,k )-w(i,0   ,k))*dyi*visc*dzflzi(k)
         dwdym = (w(i,ny,k)-w(i,ny+1,k))*dyi*visc*dzflzi(k)
-        tauz(2) = tauz(2) + (dwdyp+dwdym)
+        tauz2d = tauz2d + (dwdyp+dwdym)
       enddo
     enddo
+    tauz(2)=tauz2d
+    !@cuf istat=cudaDeviceSynchronize()
     call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
