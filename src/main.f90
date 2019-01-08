@@ -105,6 +105,7 @@ program cans
   !real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
   real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi
 #ifdef USE_CUDA
+  integer :: istat
   attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
   attributes(managed):: dudtrk,dvdtrk,dwdtrk
 #endif
@@ -159,6 +160,14 @@ program cans
   allocate(dzflzi(0:ktot+1)) 
   allocate(dzclzi(0:ktot+1)) 
 
+#ifdef USE_CUDA
+  istat = cudaMemAdvise( dzc, size(dzc), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( dzf, size(dzf), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( dzci, size(dzci), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( dzfi, size(dzfi), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( dzclzi, size(dzclzi), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( dzflzi, size(dzflzi), cudaMemAdviseSetReadMostly, 0 )
+#endif
 
 !!!!!!!!!
   if(myid.eq.0) print*, '******************************'
@@ -229,8 +238,13 @@ program cans
                   rhsbw%x,rhsbw%y,rhsbw%z)
 #endif
 
-  dzflzi(:)=dzf(:)/lz
-  dzclzi(:)=dzc(:)/lz
+#ifdef USE_CUDA
+  !$cuf kernel do(1) <<<*,*>>>
+#endif
+  do k=0,ktot+1
+     dzflzi(k)=dzf(k)/lz
+     dzclzi(k)=dzc(k)/lz
+  enddo
   !
   ! main loop
   !
@@ -261,6 +275,7 @@ program cans
  #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
                  u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+
  #ifdef USE_NVTX
       call nvtxEndRange
  #endif
@@ -270,7 +285,7 @@ program cans
  #ifdef USE_NVTX
       call nvtxStartRange("rk_id", irk)
  #endif
-      call rk_id(rkcoeff(:,irk),n,dli,dzci,dzfi,dzf/lz,dzc/lz,visc,dt,l, &
+      call rk_id(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
                  u,v,w,p,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
  #ifdef USE_NVTX
       call nvtxEndRange
@@ -364,15 +379,15 @@ program cans
       call nvtxStartRange("chkmean", irk)
  #endif
       if(is_forced(1)) then
-        call chkmean(n,dzf/lz,up,meanvel)
+        call chkmean(n,dzflzi,up,meanvel)
         if(myid.eq.0) print*,'Mean u = ', meanvel
       endif
       if(is_forced(2)) then
-        call chkmean(n,dzf/lz,vp,meanvel)
+        call chkmean(n,dzflzi,vp,meanvel)
         if(myid.eq.0) print*,'Mean v = ', meanvel
       endif
       if(is_forced(3)) then
-        call chkmean(n,dzc/lz,wp,meanvel)
+        call chkmean(n,dzclzi,wp,meanvel)
         if(myid.eq.0) print*,'Mean w = ', meanvel
       endif
  #ifdef USE_NVTX
