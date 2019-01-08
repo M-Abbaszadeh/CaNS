@@ -4,6 +4,7 @@ module mod_initmpi
   use decomp_2d
   use mod_param     , only: dims
   use mod_common_mpi, only: myid,coord,comm_cart,left,right,front,back,xhalo,yhalo,ierr,mydev
+  use mod_common_mpi, only: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
   implicit none
   private
   public initmpi
@@ -15,7 +16,7 @@ module mod_initmpi
     integer :: ntx,nty,ntz
     logical, dimension(3) :: periods
 #ifdef USE_CUDA
-     integer:: dev, local_rank, local_comm
+     integer:: dev, local_rank, local_comm, istat
 #endif
     !
     call MPI_INIT(ierr)
@@ -62,7 +63,41 @@ module mod_initmpi
     call MPI_TYPE_COMMIT(xhalo,ierr)
     call MPI_TYPE_COMMIT(yhalo,ierr)
 
-    return
+    if( .not. allocated( xsl_buf ) ) allocate( xsl_buf( 0:nty-1, 0:ntz-1 ) )
+    if( .not. allocated( xrl_buf ) ) allocate( xrl_buf( 0:nty-1, 0:ntz-1 ) )
+    if( .not. allocated( ysl_buf ) ) allocate( ysl_buf( 0:ntx-1, 0:ntz-1 ) )
+    if( .not. allocated( yrl_buf ) ) allocate( yrl_buf( 0:ntx-1, 0:ntz-1 ) )
+    if( .not. allocated( xsr_buf ) ) allocate( xsr_buf( 0:nty-1, 0:ntz-1 ) )
+    if( .not. allocated( xrr_buf ) ) allocate( xrr_buf( 0:nty-1, 0:ntz-1 ) )
+    if( .not. allocated( ysr_buf ) ) allocate( ysr_buf( 0:ntx-1, 0:ntz-1 ) )
+    if( .not. allocated( yrr_buf ) ) allocate( yrr_buf( 0:ntx-1, 0:ntz-1 ) )
+
+    istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( xsl_buf, size(xsl_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        xrl_buf, size(xrl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        xrl_buf, size(xrl_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( xrl_buf, size(xrl_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        ysl_buf, size(ysl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        ysl_buf, size(ysl_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( ysl_buf, size(ysl_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        yrl_buf, size(yrl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        yrl_buf, size(yrl_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( yrl_buf, size(yrl_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        xsr_buf, size(xsr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        xsr_buf, size(xsr_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( xsr_buf, size(xsr_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        xrr_buf, size(xrr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        xrr_buf, size(xrr_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( xrr_buf, size(xrr_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        ysr_buf, size(ysr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        ysr_buf, size(ysr_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( ysr_buf, size(ysr_buf), cudaCpuDeviceId, 0 )
+    istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
+    istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetAccessedBy, mydev )
+    istat = cudaMemPrefetchAsync( yrr_buf, size(yrr_buf), cudaCpuDeviceId, 0 )
+
+ return
   end subroutine initmpi
 end module mod_initmpi
 

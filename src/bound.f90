@@ -1,8 +1,12 @@
 module mod_bound
   use mpi
   use mod_common_mpi, only: ierr,status,comm_cart,left,right,front,back,xhalo,yhalo
+  use mod_common_mpi, only: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
   use mod_param     , only: dims
-
+#ifdef USE_CUDA
+  use cudafor
+  use nvtx
+#endif
   implicit none
   private
   public boundp,bounduvw,updt_rhs_b
@@ -670,24 +674,28 @@ module mod_bound
     real(8), dimension(0:,0:,0:), intent(inout) :: p
 #ifdef USE_CUDA
     attributes(managed)::p
-    integer:: i,j,k, indx
+    integer:: istat
 #endif
+    integer :: i,j,k,n_1, n_2
     !integer :: requests(4), statuses(MPI_STATUS_SIZE,4)
     !
     !  this subroutine updates the halos that store info
     !  from the neighboring computational sub-domain
     !
+#ifdef USE_NVTX
+      call nvtxStartRange("updthalo", 1)
+#endif
     select case(idir)
     case(1) ! x direction
     !if( .false. ) then
     if( dims(1) .eq.  1 ) then
 #ifdef USE_CUDA
-     indx=n(1)
+     n_1=n(1)
      !$cuf kernel do(2) <<<*,*>>>
       do k=lbound(p,3),ubound(p,3)
        do j=lbound(p,2),ubound(p,2)
-          p(indx+1,j,k)=p(   1,j,k)
-          p(0     ,j,k)=p(indx,j,k)
+          p(n_1+1,j,k)=p(   1,j,k)
+          p(0     ,j,k)=p(n_1,j,k)
        end do
       end do
 #else
@@ -697,12 +705,43 @@ module mod_bound
     !$OMP END WORKSHARE
 #endif
     else
-      call MPI_SENDRECV(p(1     ,0,0),1,xhalo,left ,0, &
-                        p(n(1)+1,0,0),1,xhalo,right,0, &
+      n_1=n(1)
+#ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
+#endif
+      do k=lbound(p,3),ubound(p,3)
+       do j=lbound(p,2),ubound(p,2)
+          xsl_buf(j,k)=p(  1,j,k)
+          xsr_buf(j,k)=p(n_1,j,k)
+       end do
+      end do
+      !@cuf istat = cudaDeviceSynchronize()
+
+      call MPI_SENDRECV(xsl_buf(0,0), size( xsl_buf ),MPI_REAL8,left ,0, &
+                        xrr_buf(0,0), size( xrr_buf ),MPI_REAL8,right,0, &
                         comm_cart,status,ierr)
-      call MPI_SENDRECV(p(n(1),0,0),1,xhalo,right,0, &
-                        p(0   ,0,0),1,xhalo,left ,0, &
+
+      call MPI_SENDRECV(xsr_buf(0,0), size( xsr_buf ),MPI_REAL8,right,0, &
+                        xrl_buf(0,0), size( xrl_buf ),MPI_REAL8,left ,0, &
                         comm_cart,status,ierr)
+
+#ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
+#endif
+      do k=lbound(p,3),ubound(p,3)
+       do j=lbound(p,2),ubound(p,2)
+          p(n_1+1,j,k)=xrr_buf(j,k)
+          p(0    ,j,k)=xrl_buf(j,k)
+       end do
+      end do
+      !@cuf istat = cudaDeviceSynchronize()
+
+      !call MPI_SENDRECV(p(1     ,0,0),1,xhalo,left ,0, &
+      !                  p(n(1)+1,0,0),1,xhalo,right,0, &
+      !                  comm_cart,status,ierr)
+      !call MPI_SENDRECV(p(n(1),0,0),1,xhalo,right,0, &
+      !                  p(0   ,0,0),1,xhalo,left ,0, &
+      !                  comm_cart,status,ierr)
          !call MPI_IRECV(p(0     ,0,0),1,xhalo,left ,1, &
          !               comm_cart,requests(2),error)
          !call MPI_IRECV(p(n(1)+1,0,0),1,xhalo,right,0, &
@@ -717,12 +756,12 @@ module mod_bound
     !if( .false. ) then
     if( dims(2) .eq.  1 ) then
 #ifdef USE_CUDA
-     indx=n(2)
+     n_2=n(2)
      !$cuf kernel do(2) <<<*,*>>>
       do k=lbound(p,3),ubound(p,3)
        do i=lbound(p,1),ubound(p,1)
-          p(i,indx+1,k)=p(i,   1,k)
-          p(i,0     ,k)=p(i,indx,k)
+          p(i,n_2+1,k)=p(i,  1,k)
+          p(i,    0,k)=p(i,n_2,k)
        end do
       end do
 #else
@@ -732,12 +771,41 @@ module mod_bound
     !$OMP END WORKSHARE
 #endif
     else
-      call MPI_SENDRECV(p(0,1     ,0),1,yhalo,front,0, &
-                        p(0,n(2)+1,0),1,yhalo,back ,0, &
+      n_2=n(2)
+#ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
+#endif
+      do k=lbound(p,3),ubound(p,3)
+       do i=lbound(p,1),ubound(p,1)
+          ysl_buf(i,k)=p(i,  1,k)
+          ysr_buf(i,k)=p(i,n_2,k)
+       end do
+      end do
+      !@cuf istat = cudaDeviceSynchronize()
+
+      call MPI_SENDRECV(ysl_buf(0,0), size( ysl_buf ),MPI_REAL8,front,0, &
+                        yrr_buf(0,0), size( yrr_buf ),MPI_REAL8,back ,0, &
                         comm_cart,status,ierr)
-      call MPI_SENDRECV(p(0,n(2),0),1,yhalo,back ,0, &
-                        p(0,0   ,0),1,yhalo,front,0, &
+      call MPI_SENDRECV(ysr_buf(0,0), size( ysr_buf ),MPI_REAL8,back ,0, &
+                        yrl_buf(0,0), size( yrl_buf ),MPI_REAL8,front,0, &
                         comm_cart,status,ierr)
+#ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
+#endif
+      do k=lbound(p,3),ubound(p,3)
+       do i=lbound(p,1),ubound(p,1)
+          p(i,n_2+1,k)=yrr_buf(i,k)
+          p(i,    0,k)=yrl_buf(i,k)
+       end do
+      end do
+      !@cuf istat = cudaDeviceSynchronize()
+
+      !call MPI_SENDRECV(p(0,1     ,0),1,yhalo,front,0, &
+      !                  p(0,n(2)+1,0),1,yhalo,back ,0, &
+      !                  comm_cart,status,ierr)
+      !call MPI_SENDRECV(p(0,n(2),0),1,yhalo,back ,0, &
+      !                  p(0,0   ,0),1,yhalo,front,0, &
+      !                  comm_cart,status,ierr)
          !call MPI_IRECV(p(0,n(2)+1,0),1,yhalo,back ,0, &
          !               comm_cart,requests(1),error)
          !call MPI_IRECV(p(0,0     ,0),1,yhalo,front,1, &
@@ -749,6 +817,11 @@ module mod_bound
          !call MPI_WAITALL(4, requests, statuses, error)
      endif
     end select
+
+#ifdef USE_NVTX
+      call nvtxEndRange
+#endif
+
     return
   end subroutine updthalo
 end module mod_bound
