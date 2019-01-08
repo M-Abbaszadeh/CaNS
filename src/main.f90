@@ -98,7 +98,7 @@ program cans
   real(8) :: alpha,alphai
   type(rhs_bound) :: rhsbu,rhsbv,rhsbw
 #endif
-  type(rhs_bound),managed:: rhsbp
+  type(rhs_bound):: rhsbp
   real(8) :: ristep
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep

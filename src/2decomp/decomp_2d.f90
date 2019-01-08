@@ -210,25 +210,33 @@ module decomp_2d
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   interface transpose_x_to_y
+#ifdef USE_CUDA
      module procedure transpose_x_to_y_real_d
+#endif
      module procedure transpose_x_to_y_real
      module procedure transpose_x_to_y_complex
   end interface transpose_x_to_y
   
   interface transpose_y_to_z
+#ifdef USE_CUDA
      module procedure transpose_y_to_z_real_d
+#endif
      module procedure transpose_y_to_z_real
      module procedure transpose_y_to_z_complex
   end interface transpose_y_to_z
   
   interface transpose_z_to_y
+#ifdef USE_CUDA
      module procedure transpose_z_to_y_real_d
+#endif
      module procedure transpose_z_to_y_real
      module procedure transpose_z_to_y_complex
   end interface transpose_z_to_y
 
   interface transpose_y_to_x
+#ifdef USE_CUDA
      module procedure transpose_y_to_x_real_d
+#endif
      module procedure transpose_y_to_x_real
      module procedure transpose_y_to_x_complex
   end interface transpose_y_to_x
