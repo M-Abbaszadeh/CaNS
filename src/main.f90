@@ -103,9 +103,9 @@ program cans
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep
   !real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
-  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi
+  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi
 #ifdef USE_CUDA
-  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
+  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
   attributes(managed):: dudtrk,dvdtrk,dwdtrk
 #endif
   real(8) :: meanvel
@@ -156,6 +156,8 @@ program cans
   allocate(  zf(0:ktot+1)) 
   allocate(dzci(0:ktot+1)) 
   allocate(dzfi(0:ktot+1)) 
+  allocate(dzflzi(0:ktot+1)) 
+  allocate(dzclzi(0:ktot+1)) 
 
 
 !!!!!!!!!
@@ -226,6 +228,9 @@ program cans
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,3),bcvel(:,:,3),lambdaxyw,(/'c','c','f'/),aw,bw,cw,arrplanw,normfftw, &
                   rhsbw%x,rhsbw%y,rhsbw%z)
 #endif
+
+  dzflzi(:)=dzf(:)/lz
+  dzclzi(:)=dzc(:)/lz
   !
   ! main loop
   !
@@ -254,7 +259,7 @@ program cans
  #ifdef USE_NVTX
       call nvtxStartRange("rk", irk)
  #endif
-      call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzf/lz,dzc/lz,visc,dt,l, &
+      call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
                  u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
  #ifdef USE_NVTX
       call nvtxEndRange
@@ -548,7 +553,7 @@ program cans
   deallocate(dudtrk,dvdtrk,dwdtrk)
   deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
   deallocate(lambdaxyp,ap,bp,cp)
-  deallocate(dzc,dzf,zc,zf,dzci,dzfi)
+  deallocate(dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi)
 
   if(myid.eq.0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
