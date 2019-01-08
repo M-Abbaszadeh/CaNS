@@ -25,7 +25,7 @@ $(TARGET): $(OBJ)
 clean:
 	rm -rf *.o *.mod *dSYM $(TARGET)
 # dependencies
-bound.o: bound.f90 common_mpi.o
+bound.o: bound.f90 common_mpi.o nvtx.o
 	$(FC) $(FFLAGS) -cpp -c  bound.f90 
 chkdiv.o: chkdiv.f90 common_mpi.o
 	$(FC) $(FFLAGS) -cpp -c  chkdiv.f90 

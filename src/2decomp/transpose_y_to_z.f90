@@ -11,6 +11,62 @@
 
 ! This file contains the routines that transpose data from Y to Z pencil
 
+#ifdef USE_CUDA
+  subroutine transpose_y_to_z_real_d(src, dst, opt_decomp)
+
+    implicit none
+
+    real(mytype), dimension(:,:,:), intent(IN) :: src
+    real(mytype), dimension(:,:,:), intent(OUT) :: dst
+    TYPE(DECOMP_INFO), intent(IN), optional :: opt_decomp
+    attributes( managed ) :: src, dst
+    TYPE(DECOMP_INFO) :: decomp
+
+    integer :: s1,s2,s3,d1,d2,d3
+    integer :: ierror,istat,m,i1,i2,pos
+
+    if (present(opt_decomp)) then
+       decomp = opt_decomp
+    else
+       decomp = decomp_main
+    end if
+
+    s1 = SIZE(src,1)
+    s2 = SIZE(src,2)
+    s3 = SIZE(src,3)
+    d1 = SIZE(dst,1)
+    d2 = SIZE(dst,2)
+    d3 = SIZE(dst,3)
+
+    ! rearrange source array as send buffer
+    !call mem_split_yz_real(src, s1, s2, s3, work1_r, dims(2), &
+    !     decomp%y2dist, decomp)
+    do m=0,dims(2)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%y2dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%y2dist(m)-1
+       end if
+
+       pos = decomp%y2disp(m) + 1
+
+       istat = cudaMemcpy2D( work1_r(pos), s1*(i2-i1+1), src(1,i1,1), s1*s2, s1*(i2-i1+1), s3, cudaMemcpyDeviceToHost )
+    end do
+
+    call MPI_ALLTOALLV(work1_r, decomp%y2cnts, decomp%y2disp, &
+         real_type, work2_r, decomp%z2cnts, decomp%z2disp, &
+         real_type, DECOMP_2D_COMM_ROW, ierror)
+
+    ! rearrange receive buffer
+    istat = cudaMemcpy( dst, work2_r, d1*d2*d3, cudaMemcpyHostToDevice )
+
+    return
+  end subroutine transpose_y_to_z_real_d
+
+#endif
+
   subroutine transpose_y_to_z_real(src, dst, opt_decomp)
 
     implicit none

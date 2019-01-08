@@ -14,7 +14,9 @@
 module decomp_2d
 
   use MPI
-
+#ifdef USE_CUDA
+  use cudafor
+#endif
   implicit none
 
 #ifdef GLOBAL_ARRAYS
@@ -164,6 +166,9 @@ module decomp_2d
   integer, save :: decomp_buf_size = 0
   real(mytype),    allocatable, dimension(:) :: work1_r, work2_r
   complex(mytype), allocatable, dimension(:) :: work1_c, work2_c
+#ifdef USE_CUDA
+  attributes( pinned ) :: work1_r, work2_r, work1_c, work2_c
+#endif
 
   ! public user routines
   public :: decomp_2d_init, decomp_2d_finalize, &
@@ -205,21 +210,25 @@ module decomp_2d
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   interface transpose_x_to_y
+     module procedure transpose_x_to_y_real_d
      module procedure transpose_x_to_y_real
      module procedure transpose_x_to_y_complex
   end interface transpose_x_to_y
   
   interface transpose_y_to_z
+     module procedure transpose_y_to_z_real_d
      module procedure transpose_y_to_z_real
      module procedure transpose_y_to_z_complex
   end interface transpose_y_to_z
   
   interface transpose_z_to_y
+     module procedure transpose_z_to_y_real_d
      module procedure transpose_z_to_y_real
      module procedure transpose_z_to_y_complex
   end interface transpose_z_to_y
 
   interface transpose_y_to_x
+     module procedure transpose_y_to_x_real_d
      module procedure transpose_y_to_x_real
      module procedure transpose_y_to_x_complex
   end interface transpose_y_to_x

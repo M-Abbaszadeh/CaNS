@@ -9,6 +9,12 @@ module mod_solver
   use mod_common_mpi, only: mydev
 #endif
   implicit none
+  real(8), allocatable, dimension(:,:,:) :: px,py,pz
+#ifdef USE_CUDA
+  attributes(managed) :: px,py,pz
+  real(8), allocatable, dimension(:,:,:), device :: py_t
+  complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
+#endif
   private
   public solver
   contains
@@ -24,13 +30,14 @@ module mod_solver
     real(8), intent(inout), dimension(0:,0:,0:) :: pz_pad
     !real(8), dimension(n(1)*dims(1),n(2)*dims(2)/dims(1),n(3)/dims(2)) :: px
     !real(8), dimension(n(1)*dims(1)/dims(1),n(2)*dims(2),n(3)/dims(2)) :: py
-    real(8), allocatable, dimension(:,:,:) :: px,py,pz
+    !real(8), allocatable, dimension(:,:,:) :: px,py,pz
     integer :: i,j,k
 #ifdef USE_CUDA
-    attributes(managed) :: px,py,pz,pz_pad,lambdaxy,a,b,c
+    !attributes(managed) :: px,py,pz,pz_pad,lambdaxy,a,b,c
+    attributes(managed) :: pz_pad,lambdaxy,a,b,c
     integer :: istat,ii
-    real(8), allocatable, dimension(:,:,:), device :: py_t
-    complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
+    !real(8), allocatable, dimension(:,:,:), device :: py_t
+    !complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
 #endif
     integer :: dotrans
     integer, dimension(3) :: ng
@@ -41,29 +48,27 @@ module mod_solver
 
     ng(:) = n(:)
     ng(1:2) = ng(1:2)*dims(1:2)
-    allocate(px(ng(1),ng(2)/dims(1),ng(3)/dims(2)))
-    allocate(py(ng(1)/dims(1),ng(2),ng(3)/dims(2)))
-    allocate(pz(ng(1)/dims(1),ng(2)/dims(2),ng(3)))
+    if ( .not. allocated(px) ) allocate(px(ng(1),ng(2)/dims(1),ng(3)/dims(2)))
+    if ( .not. allocated(py) ) allocate(py(ng(1)/dims(1),ng(2),ng(3)/dims(2)))
+    if ( .not. allocated(pz) ) allocate(pz(ng(1)/dims(1),ng(2)/dims(2),ng(3)))
 
 #ifdef USE_CUDA
-    allocate( pxc( ng(1)/2 + 1, ng(2)/dims(1), ng(3)/dims(2) ) )
-    allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
-    allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
-
-    istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, mydev )
-    istat = cudaMemAdvise( py, size(py), cudaMemAdviseSetPreferredLocation, mydev )
-    istat = cudaMemAdvise( pz, size(pz), cudaMemAdviseSetPreferredLocation, mydev )
-
-    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), mydev, 0)
-    istat = cudaMemPrefetchAsync( pz, size(pz), mydev, 0)
-
-    if(dotrans) then
-      istat = cudaMemPrefetchAsync( px, size(px), cudaCpuDeviceId, 0)
-      istat = cudaMemPrefetchAsync( py, size(py), cudaCpuDeviceId, 0)
-    else
+    if ( .not. allocated(pxc  )) allocate( pxc( ng(1)/2 + 1, ng(2)/dims(1), ng(3)/dims(2) ) )
+    if ( .not. allocated(pyc_t)) allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
+    if ( .not. allocated(py_t )) then
+      allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
+      istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, mydev )
+      istat = cudaMemAdvise( py, size(py), cudaMemAdviseSetPreferredLocation, mydev )
+      istat = cudaMemAdvise( pz, size(pz), cudaMemAdviseSetPreferredLocation, mydev )
       istat = cudaMemPrefetchAsync( px, size(px), mydev, 0)
       istat = cudaMemPrefetchAsync( py, size(py), mydev, 0)
+      istat = cudaMemPrefetchAsync( pz, size(pz), mydev, 0)
     endif
+    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), mydev, 0)
+    istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),mydev,0)
+    istat = cudaMemPrefetchAsync( a, size(a), mydev, 0)
+    istat = cudaMemPrefetchAsync( b, size(b), mydev, 0)
+    istat = cudaMemPrefetchAsync( c, size(c), mydev, 0)
 
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -76,10 +81,6 @@ module mod_solver
     enddo
     !
     if(dotrans) then
-#ifdef USE_CUDA
-      istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
-      !@cuf istat = cudaDeviceSynchronize()
-#endif
       !call transpose_z_to_x(pz,px)
       call transpose_z_to_y(pz,py)
       call transpose_y_to_x(py,px)
@@ -94,14 +95,11 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( px, pz, size(px), cudaMemcpyDeviceToDevice )
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),mydev,0)
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-!
-!$cuf kernel do(2) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
       do i=1,(ng(1)/2)+1
@@ -115,8 +113,6 @@ module mod_solver
     end do
     end do
 
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
-    !@cuf istat = cudaDeviceSynchronize()
 #else
     call fftd(arrplan(1,1),px) ! fwd transform in x
 #endif
@@ -134,12 +130,9 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( py, px, size(px), cudaMemcpyDeviceToDevice )
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),mydev,0)
-
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
@@ -151,7 +144,7 @@ module mod_solver
 
     istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
 
-!$cuf kernel do(2) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
       do i=1,(ng(2)/2)+1
@@ -164,9 +157,6 @@ module mod_solver
       end do
     end do
     end do
-
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
-    !@cuf istat = cudaDeviceSynchronize()
 #else
     call fftd(arrplan(1,2),py) ! fwd transform in y
 #endif
@@ -184,9 +174,7 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( pz, py, size(pz), cudaMemcpyDeviceToDevice )
     endif
-
 
     q = 0
     if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
@@ -194,11 +182,7 @@ module mod_solver
       call gaussel_periodic(n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
     else
 #ifdef USE_CUDA
-      istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),mydev,0)
-      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),mydev,0)
-      call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
-      if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),cudaCpuDeviceId,0)
-      !@cuf istat = cudaDeviceSynchronize()
+      call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz,px,py)
 #else
       call gaussel(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
 #endif
@@ -217,14 +201,11 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( py, pz, size(py), cudaMemcpyDeviceToDevice )
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),mydev,0)
-
     pyc_t = (0.d0,0.d0)
-!$cuf kernel do(2) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
       do i=1,(ng(2)/2)+1
@@ -248,9 +229,6 @@ module mod_solver
     enddo
     enddo
     enddo
-
-    if( dotrans ) istat = cudaMemPrefetchAsync(py,size(py),cudaCpuDeviceId,0)
-    !@cuf istat = cudaDeviceSynchronize()
 #else
     call ffti(arrplan(2,2),py) ! bwd transform in y
 #endif
@@ -268,12 +246,9 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( px, py, size(px), cudaMemcpyDeviceToDevice )
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),mydev,0)
-
 !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
@@ -289,9 +264,6 @@ module mod_solver
     end do
 
     istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
-
-    if( dotrans ) istat = cudaMemPrefetchAsync(px,size(px),cudaCpuDeviceId,0)
-    !@cuf istat = cudaDeviceSynchronize()
 #else
     call ffti(arrplan(2,1),px) ! bwd transform in x
 #endif
@@ -311,12 +283,9 @@ module mod_solver
       enddo
       enddo
       enddo
-      !istat = cudaMemcpy( pz, px, size(pz), cudaMemcpyDeviceToDevice )
     endif
 
 #ifdef USE_CUDA
-    if( dotrans ) istat = cudaMemPrefetchAsync(pz,size(pz),mydev,0)
-
 !$cuf kernel do(3) <<<*,*>>>
 #endif
     do k=lbound(pz,3),ubound(pz,3)
@@ -327,23 +296,23 @@ module mod_solver
     enddo
     enddo
 
-    deallocate(px,py,pz)
+    !deallocate(px,py,pz)
 #ifdef USE_CUDA
-    deallocate(pxc,pyc_t,py_t)
+    !deallocate(pxc,pyc_t,py_t)
 #endif
 
     return
   end subroutine solver
   !
 #ifdef USE_CUDA
-  subroutine gaussel_gpu(nx,ny,n,a,b,c,lambdaxy,p)
+  subroutine gaussel_gpu(nx,ny,n,a,b,c,lambdaxy,p,bb,d)
     implicit none
     integer, intent(in) :: nx,ny,n
     real(8), intent(in), dimension(:), managed :: a,b,c
     real(8), intent(in), dimension(nx,ny), managed :: lambdaxy
     real(8), intent(inout), dimension(:,:,:), managed :: p
-    real(8), dimension(nx,ny,n), device :: bb
-    real(8), dimension(nx,ny,n), device :: d
+    real(8), intent(inout), dimension(nx,ny,n), device :: bb
+    real(8), intent(inout), dimension(nx,ny,n), device :: d
     real(8) :: z
     integer :: i,j,k
     !

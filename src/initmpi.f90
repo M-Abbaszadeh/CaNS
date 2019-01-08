@@ -72,6 +72,7 @@ module mod_initmpi
     if( .not. allocated( ysr_buf ) ) allocate( ysr_buf( 0:ntx-1, 0:ntz-1 ) )
     if( .not. allocated( yrr_buf ) ) allocate( yrr_buf( 0:ntx-1, 0:ntz-1 ) )
 
+#ifdef USE_CUDA
     istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
     istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetAccessedBy, mydev )
     istat = cudaMemPrefetchAsync( xsl_buf, size(xsl_buf), cudaCpuDeviceId, 0 )
@@ -96,6 +97,7 @@ module mod_initmpi
     istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
     istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetAccessedBy, mydev )
     istat = cudaMemPrefetchAsync( yrr_buf, size(yrr_buf), cudaCpuDeviceId, 0 )
+#endif
 
  return
   end subroutine initmpi

@@ -11,6 +11,79 @@
 
 ! This file contains the routines that transpose data from Y to X pencil
 
+#ifdef USE_CUDA
+  subroutine transpose_y_to_x_real_d(src, dst, opt_decomp)
+
+    implicit none
+
+    real(mytype), dimension(:,:,:), intent(IN) :: src
+    real(mytype), dimension(:,:,:), intent(OUT) :: dst
+    TYPE(DECOMP_INFO), intent(IN), optional :: opt_decomp
+    attributes( managed ) :: src, dst
+    TYPE(DECOMP_INFO) :: decomp
+
+    integer :: s1,s2,s3,d1,d2,d3
+    integer :: ierror, istat, m, i1, i2, pos
+
+    if (present(opt_decomp)) then
+       decomp = opt_decomp
+    else
+       decomp = decomp_main
+    end if
+
+    s1 = SIZE(src,1)
+    s2 = SIZE(src,2)
+    s3 = SIZE(src,3)
+    d1 = SIZE(dst,1)
+    d2 = SIZE(dst,2)
+    d3 = SIZE(dst,3)
+
+    ! rearrange source array as send buffer
+    !call mem_split_yx_real(src, s1, s2, s3, work1_r, dims(1), &
+    !     decomp%y1dist, decomp)
+
+    do m=0,dims(1)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%y1dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%y1dist(m)-1
+       end if
+
+       pos = decomp%y1disp(m) + 1
+
+       istat = cudaMemcpy2D( work1_r(pos), s1*(i2-i1+1), src(1,i1,1), s1*s2, s1*(i2-i1+1), s3, cudaMemcpyDeviceToHost )
+
+    end do
+
+    ! transpose using MPI_ALLTOALL(V)
+    call MPI_ALLTOALLV(work1_r, decomp%y1cnts, decomp%y1disp, &
+         real_type, work2_r, decomp%x1cnts, decomp%x1disp, &
+         real_type, DECOMP_2D_COMM_COL, ierror)
+
+    ! rearrange receive buffer
+    !call mem_merge_yx_real(work2_r, d1, d2, d3, dst, dims(1), &
+    !     decomp%x1dist, decomp)
+    do m=0,dims(1)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%x1dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%x1dist(m)-1
+       end if
+
+       pos = decomp%x1disp(m) + 1
+
+       istat = cudaMemcpy2D( dst(i1,1,1), d1, work2_r(pos), i2-i1+1, i2-i1+1, d2*d3, cudaMemcpyHostToDevice )
+
+    end do
+
+    return
+  end subroutine transpose_y_to_x_real_d
+
+#endif
   subroutine transpose_y_to_x_real(src, dst, opt_decomp)
 
     implicit none
