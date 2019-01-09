@@ -310,7 +310,8 @@ program cans
       call nvtxStartRange("rk", irk)
       #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
-                 u,v,w,p,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+              u,v,w,p,dudtrk,dvdtrk,dwdtrk, &
+              dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
@@ -390,7 +391,13 @@ program cans
       up(1:n(1),1:n(2),1:n(3)) = up(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
       #endif
-      bb(:) = bu(:) + alpha
+      
+      !$cuf kernel do(1) <<<*,*>>> 
+      do k=1,ktot
+       bb(k) = bu(k) + alpha
+      end do 
+  !@cuf istat=cudaDeviceSynchronize()
+
       #ifdef USE_NVTX
       call nvtxStartRange("solver_u", irk+3)
       #endif
@@ -414,7 +421,12 @@ program cans
       vp(1:n(1),1:n(2),1:n(3)) = vp(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
       #endif
-      bb(:) = bv(:) + alpha
+      !$cuf kernel do(1) <<<*,*>>> 
+      do k=1,ktot
+       bb(k) = bv(k) + alpha
+      end do 
+  !@cuf istat=cudaDeviceSynchronize()
+
       #ifdef USE_NVTX
       call nvtxStartRange("solver_v", irk+4)
       #endif
@@ -438,7 +450,12 @@ program cans
       wp(1:n(1),1:n(2),1:n(3)) = wp(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
       #endif
-      bb(:) = bw(:) + alpha
+      !$cuf kernel do(1) <<<*,*>>> 
+      do k=1,ktot
+       bb(k) = bw(k) + alpha
+      end do 
+  !@cuf istat=cudaDeviceSynchronize()
+
       #ifdef USE_NVTX
       call nvtxStartRange("solver_w", irk+5)
       #endif
