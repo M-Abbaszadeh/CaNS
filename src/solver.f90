@@ -35,7 +35,7 @@ module mod_solver
 #ifdef USE_CUDA
     !attributes(managed) :: px,py,pz,pz_pad,lambdaxy,a,b,c
     attributes(managed) :: pz_pad,lambdaxy,a,b,c
-    integer :: istat,ii
+    integer :: istat,ii,ng1,ng2
     !real(8), allocatable, dimension(:,:,:), device :: py_t
     !complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
 #endif
@@ -99,16 +99,16 @@ module mod_solver
 
 #ifdef USE_CUDA
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-    !$cuf kernel do(2) <<<*,*>>>
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
-      do i=1,(ng(1)/2)+1
-        px(i,j,k) = REAL(pxc(i,j,k))
-      end do
-      ii=2
-      do i=ng(1),(ng(1)/2)+2,-1
-        px(i,j,k) = AIMAG(pxc(ii,j,k))
-        ii = ii + 1
+      do i=1,ng(1)
+        if( i .le. (ng1/2)+1 )  then
+          px(i,j,k) = REAL(pxc(i,j,k))
+        else
+          px( ng1 - (i - (ng1/2 + 2)),j,k) = AIMAG(pxc(i-(ng1/2),j,k))
+        endif
       end do
     end do
     end do
@@ -144,16 +144,16 @@ module mod_solver
 
     istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
 
-    !$cuf kernel do(2) <<<*,*>>>
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
-      do i=1,(ng(2)/2)+1
-        py(j,i,k) = REAL(pyc_t(i,j,k))
-      end do
-      ii=2
-      do i=ng(2),(ng(2)/2)+2,-1
-        py(j,i,k) = AIMAG(pyc_t(ii,j,k))
-        ii = ii + 1
+      do i=1,ng(2)
+        if( i .le. (ng2/2)+1 )  then
+          py(j,i,k) = REAL( pyc_t(i,j,k) )
+        else
+          py( j, ng2 - (i - (ng2/2 + 2)),k) = AIMAG( pyc_t(i-(ng2/2),j,k) )
+        endif
       end do
     end do
     end do
@@ -205,16 +205,17 @@ module mod_solver
 
 #ifdef USE_CUDA
     pyc_t = (0.d0,0.d0)
-    !$cuf kernel do(2) <<<*,*>>>
+
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
-      do i=1,(ng(2)/2)+1
-        pyc_t(i,j,k)%re = py(j,i,k)
-      end do
-      ii=2
-      do i=ng(2),(ng(2)/2)+2,-1
-        pyc_t(ii,j,k)%im = py(j,i,k)
-        ii = ii + 1
+      do i=1,ng(2)
+        if( i .le. (ng2/2)+1 )  then
+          pyc_t(i,j,k)%re = py(j,i,k)
+        else
+          pyc_t(i-(ng2/2),j,k)%im = py( j, ng2 - (i - (ng2/2 + 2)),k)
+        endif
       end do
     end do
     end do
@@ -249,16 +250,16 @@ module mod_solver
     endif
 
 #ifdef USE_CUDA
-!$cuf kernel do(2) <<<*,*>>>
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
-      do i=1,(ng(1)/2)+1
-        pxc(i,j,k)%re = px(i,j,k)
-      end do
-      ii=2
-      do i=ng(1),(ng(1)/2)+2,-1
-        pxc(ii,j,k)%im = px(i,j,k)
-        ii = ii + 1
+      do i=1,ng(1)
+        if( i .le. (ng1/2)+1 )  then
+          pxc(i,j,k)%re = px(i,j,k)
+        else
+          pxc(i-(ng1/2),j,k)%im = px( ng1 - (i - (ng1/2 + 2)),j,k)
+        endif
       end do
     end do
     end do
