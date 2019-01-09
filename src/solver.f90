@@ -207,7 +207,7 @@ module mod_solver
     pyc_t = (0.d0,0.d0)
 
     ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
       do i=1,ng(2)
@@ -251,7 +251,7 @@ module mod_solver
 
 #ifdef USE_CUDA
     ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(2)/dims(1)
       do i=1,ng(1)
