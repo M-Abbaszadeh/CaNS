@@ -112,6 +112,8 @@ program cans
   real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi
 #ifdef USE_CUDA
   integer :: istat
+  integer(kind=cuda_count_kind):: freeMem,totMem
+  integer(8):: totEle
   attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
   attributes(managed):: dudtrk,dvdtrk,dwdtrk
 #endif
@@ -211,7 +213,24 @@ program cans
   if(myid.eq.0) print*, ''
 
 #ifdef USE_CUDA
-  if(myid.eq.0) print*, ' GPU accelerated version'
+  if(myid.eq.0) then 
+      print*, ' GPU accelerated version, grid size:',n
+      #ifndef IMPDIFF
+      totEle=(8*int((imax+2)*(jmax+2)*(ktot+2),8) + 6*int(n(1)*n(2)*n(3),8) + 6*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
+      #else
+      totEle=(8*int((imax+2)*(jmax+2)*(ktot+2),8) + 9*int(n(1)*n(2)*n(3),8) +24*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
+      #endif
+      totEle = totEle+ int((n(1)*dims(1)*n(2)*dims(2)/dims(1)*n(3)/dims(2)),8) + &
+                       int((n(1)*n(2)*dims(2)*n(3)/dims(2)),8) + int(n(1)*n(2)*ng(3),8) + &
+                       int((n(1)*dims(1)+2)* n(2)*dims(2)/dims(1)* n(3)/dims(2),8) +  &
+                       int((n(2)*dims(2)+2)* n(1)* n(3)/dims(2) , 8 ) + &
+                       int(n(2)*dims(2)* n(1)* n(3)/dims(2), 8 ) 
+      print*, ' Estimated Memory usage (GB) per MPI task: ',totEle*8./(1024.**3)
+      ! Missing fft plan
+      istat=cudaMemGetInfo(freeMem,totMem)
+      print *," Memory on GPU (GB)                      : ",totMem/(1024.**3)
+      print *," "
+  endif
 #endif 
   call initgrid(inivel,n(3),gr,lz,dzc,dzf,zc,zf)
   if(myid.eq.0) then
@@ -236,7 +255,13 @@ program cans
   if(.not.restart) then
     istep = 0
     time = 0.d0
+#ifdef USE_NVTX
+      call nvtxStartRange("initflow", 4)
+#endif
     call initflow(inivel,n,zc/lz,dzc/lz,dzf/lz,visc,uref,u,v,w,p)
+#ifdef USE_NVTX
+      call nvtxEndRange
+#endif
     if(myid.eq.0) print*, '*** Initial condition succesfully set ***'
   else
     call load('r',trim(datadir)//'fld.bin',n,u(1:n(1),1:n(2),1:n(3)), &
@@ -264,13 +289,17 @@ program cans
   ! initialize Poisson solver
   !
   call initsolver(n,dli,dzci,dzfi,cbcpre,bcpre(:,:),lambdaxyp,(/'c','c','c'/),ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
+      print *,"Memory on card",freeMem,totMem
 #ifdef IMPDIFF
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,1),bcvel(:,:,1),lambdaxyu,(/'f','c','c'/),au,bu,cu,arrplanu,normfftu, &
                   rhsbu%x,rhsbu%y,rhsbu%z)
+      print *,"Memory on card",freeMem,totMem
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,2),bcvel(:,:,2),lambdaxyv,(/'c','f','c'/),av,bv,cv,arrplanv,normfftv, &
                   rhsbv%x,rhsbv%y,rhsbv%z)
+      print *,"Memory on card",freeMem,totMem
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,3),bcvel(:,:,3),lambdaxyw,(/'c','c','f'/),aw,bw,cw,arrplanw,normfftw, &
                   rhsbw%x,rhsbw%y,rhsbw%z)
+      print *,"Memory on card",freeMem,totMem
 #endif
 
 #ifdef USE_CUDA
@@ -286,6 +315,9 @@ program cans
   !
   if(myid.eq.0) print*, '*** Calculation loop starts now ***'
   do while(istep.lt.nstep)
+
+      istat=cudaMemGetInfo(freeMem,totMem)
+      print *,"Available Memory (GB) on card", freeMem/(1024.**3)
 
  #ifdef USE_NVTX
       call nvtxStartRange("timestep", istep)
