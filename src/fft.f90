@@ -28,6 +28,8 @@ module mod_fft
 #ifdef USE_CUDA
     integer :: istat
     integer(int_ptr_kind()) :: worksize, max_worksize
+    integer, pointer :: null_fptr
+    call c_f_pointer( c_null_ptr, null_fptr )
     max_worksize = 0
 #endif
     !$ call dfftw_init_threads(ierr)
@@ -63,19 +65,20 @@ module mod_fft
     normfft = normfft*norm(1)*(nx_x+norm(2)-ix)
 
 #ifdef USE_CUDA
+    if( .not. allocated( cufft_workspace ) ) then
         batch = ny_x*nz_x
-        istat = cufftPlan1D(cufft_plan_fwd_x,nx_x,CUFFT_D2Z,batch)
-!        istat = cufftCreate( cufft_plan_fwd_z )
-!        istat = cufftSetAutoAllocation( cufft_plan_fwd_z, 0 )
-!        istat = cufftMakePlanMany(cufft_plan_fwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
-!        max_worksize = max(worksize,max_worksize)
+        !istat = cufftPlan1D(cufft_plan_fwd_x,nx_x,CUFFT_D2Z,batch)
+        istat = cufftCreate( cufft_plan_fwd_x )
+        istat = cufftSetAutoAllocation( cufft_plan_fwd_x, 0 )
+        istat = cufftMakePlanMany(cufft_plan_fwd_x,1,nx_x,null_fptr,1,nx_x,null_fptr,1,nx_x,CUFFT_D2Z,batch,worksize)
+        max_worksize = max(worksize,max_worksize)
 
-        istat = cufftPlan1D(cufft_plan_bwd_x,nx_x,CUFFT_Z2D,batch)
-!        istat = cufftCreate( cufft_plan_bwd_z )
-!        istat = cufftSetAutoAllocation( cufft_plan_bwd_z, 0 )
-!        istat = cufftMakePlanMany(cufft_plan_bwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
-!        max_worksize = max(worksize,max_worksize)
-
+        !istat = cufftPlan1D(cufft_plan_bwd_x,nx_x,CUFFT_Z2D,batch);
+        istat = cufftCreate( cufft_plan_bwd_x )
+        istat = cufftSetAutoAllocation( cufft_plan_bwd_x, 0 )
+        istat = cufftMakePlanMany(cufft_plan_bwd_x,1,nx_x,null_fptr,1,nx_x,null_fptr,1,nx_x,CUFFT_Z2D,batch,worksize)
+        max_worksize = max(worksize,max_worksize)
+    endif
 #endif
     !
     ! fft in y
@@ -106,19 +109,27 @@ module mod_fft
     arrplan(2,2) = plan_bwd_y
 
 #ifdef USE_CUDA
+    if( .not. allocated( cufft_workspace ) ) then
         batch = nx_y*nz_y
-        istat = cufftPlan1D(cufft_plan_fwd_y,ny_y,CUFFT_D2Z,batch)
-!        istat = cufftCreate( cufft_plan_fwd_z )
-!        istat = cufftSetAutoAllocation( cufft_plan_fwd_z, 0 )
-!        istat = cufftMakePlanMany(cufft_plan_fwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
-!        max_worksize = max(worksize,max_worksize)
+        !istat = cufftPlan1D(cufft_plan_fwd_y,ny_y,CUFFT_D2Z,batch)
+        istat = cufftCreate( cufft_plan_fwd_y )
+        istat = cufftSetAutoAllocation( cufft_plan_fwd_y, 0 )
+        istat = cufftMakePlanMany(cufft_plan_fwd_y,1,ny_y,null_fptr,1,ny_y,null_fptr,1,ny_y,CUFFT_D2Z,batch,worksize)
+        max_worksize = max(worksize,max_worksize)
 
-        istat = cufftPlan1D(cufft_plan_bwd_y,ny_y,CUFFT_Z2D,batch)
-!        istat = cufftCreate( cufft_plan_bwd_z )
-!        istat = cufftSetAutoAllocation( cufft_plan_bwd_z, 0 )
-!        istat = cufftMakePlanMany(cufft_plan_bwd_z,1,nzm,0,1,nzm,0,1,nzm,CUFFT_Z2Z,batch,worksize)
-!        max_worksize = max(worksize,max_worksize)
+        !istat = cufftPlan1D(cufft_plan_bwd_y,ny_y,CUFFT_Z2D,batch)
+        istat = cufftCreate( cufft_plan_bwd_y )
+        istat = cufftSetAutoAllocation( cufft_plan_bwd_y, 0 )
+        istat = cufftMakePlanMany(cufft_plan_bwd_y,1,ny_y,null_fptr,1,ny_y,null_fptr,1,ny_y,CUFFT_Z2D,batch,worksize)
+        max_worksize = max(worksize,max_worksize)
 
+        allocate(cufft_workspace(max_worksize/16))
+
+        istat = cufftSetWorkArea( cufft_plan_fwd_x, cufft_workspace )
+        istat = cufftSetWorkArea( cufft_plan_bwd_x, cufft_workspace )
+        istat = cufftSetWorkArea( cufft_plan_fwd_y, cufft_workspace )
+        istat = cufftSetWorkArea( cufft_plan_bwd_y, cufft_workspace )
+    endif
 #endif
 
 
