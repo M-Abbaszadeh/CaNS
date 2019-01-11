@@ -96,7 +96,7 @@ program cans
   real(8), dimension(:)  ,allocatable :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
   real(8) :: normfftu,normfftv,normfftw
   real(8) :: alpha,alphai
-  type(rhs_bound) :: rhsbu,rhsbv,rhsbw
+  type(rhs_bound), allocatable :: rhsbu,rhsbv,rhsbw
   real(8), dimension(:,:,:),allocatable    :: dudtrkd,dvdtrkd,dwdtrkd
   #ifdef USE_CUDA
   attributes(managed):: dudtrkd,dvdtrkd,dwdtrkd,lambdaxyu,lambdaxyv,lambdaxyw
@@ -104,7 +104,7 @@ program cans
   attributes(managed):: rhsbu,rhsbv,rhsbw
   #endif
 #endif
-  type(rhs_bound):: rhsbp
+  type(rhs_bound), allocatable :: rhsbp
   real(8) :: ristep
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep
@@ -155,6 +155,7 @@ program cans
   allocate(dvdtrkd(imax,jmax,ktot))   
   allocate(dwdtrkd(imax,jmax,ktot))    
 
+  allocate(rhsbu,rhsbv,rhsbw)
   allocate(rhsbu%x(n(2),n(3),0:1))
   allocate(rhsbu%y(n(1),n(3),0:1))
   allocate(rhsbu%z(n(1),n(2),0:1))
@@ -179,6 +180,7 @@ program cans
   allocate(bb(ktot))
 #endif
 
+  allocate(rhsbp)
   allocate(rhsbp%x(n(2),n(3),0:1))
   allocate(rhsbp%y(n(1),n(3),0:1))
   allocate(rhsbp%z(n(1),n(2),0:1))
