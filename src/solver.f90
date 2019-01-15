@@ -179,7 +179,11 @@ module mod_solver
     q = 0
     if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
     if(bcz(0)//bcz(1).eq.'PP') then
+#ifdef USE_CUDA
+      call gaussel_periodic_gpu(n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz,px,py,pxc,pyc_t)
+#else
       call gaussel_periodic(n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz)
+#endif
     else
 #ifdef USE_CUDA
       call gaussel_gpu(         n(1),n(2),n(3)-q,a,b,c,lambdaxy,pz,px,py)
@@ -362,6 +366,95 @@ module mod_solver
 
     return
   end subroutine gaussel_gpu
+
+  subroutine gaussel_periodic_gpu(nx,ny,n,a,b,c,lambdaxy,p,bb,d,p1,p2)
+    implicit none
+    integer, intent(in) :: nx,ny,n
+    real(8), intent(in), dimension(:), managed :: a,b,c
+    real(8), intent(in), dimension(nx,ny), managed :: lambdaxy
+    real(8), intent(inout), dimension(:,:,:), managed :: p
+    !DIR$ IGNORE_TKR p1,p2
+    real(8), dimension(nx,ny,n), device :: bb,p1,p2,d
+    real(8) :: z
+    integer :: i,j,k
+    !
+    !solve tridiagonal system
+    !
+
+    !$cuf kernel do(2) <<<*,*>>>
+    do j=1,ny
+      do i=1,nx
+        do k=1,n
+          bb(i,j,k)  = b(k) + lambdaxy(i,j)
+        enddo
+        do k=1,n-1
+          p1(i,j,k) = p(i,j,k)
+        enddo
+
+        !call dgtsv_homebrewed(n-1,a(1:n-1),bb(1:n-1),c(1:n-2),p1(1:n-1))
+        z = 1.d0/bb(i,j,1)
+        d(i,j,1) = c(1)*z
+        p1(i,j,1) = p1(i,j,1)*z
+        do k=2,n-2
+          z = 1.d0/(bb(i,j,k)-a(k)*d(i,j,k-1))
+          d(i,j,k) = c(k)*z
+          p1(i,j,k) = (p1(i,j,k)-a(k)*p1(i,j,k-1))*z
+        enddo
+        z = bb(i,j,n-1)-a(n-1)*d(i,j,n-2)
+        if(z.ne.0.d0) then
+          p1(i,j,n-1) = (p1(i,j,n-1)-a(n-1)*p1(i,j,n-2))/z
+        else
+          p1(i,j,n-1) = 0.d0
+        endif
+        !
+        ! backward substitution
+        !
+        do k=n-2,1,-1
+          p1(i,j,k) = p1(i,j,k) - d(i,j,k)*p1(i,j,k+1)
+        enddo
+
+
+        do k=1,n
+          p2(i,j,k) = 0.d0
+        enddo
+
+        p2(i,j,1  ) = -a(1  )
+        p2(i,j,n-1) = -c(n-1)
+
+        !call dgtsv_homebrewed(n-1,a(2:n-1),bb(1:n-1),c(1:n-2),p2(1:n-1))
+        z = 1.d0/bb(i,j,1)
+        d(i,j,1) = c(1)*z
+        p2(i,j,1) = p2(i,j,1)*z
+        do k=2,n-2
+          z = 1.d0/(bb(i,j,k)-a(k+1)*d(i,j,k-1))
+          d(i,j,k) = c(k)*z
+          p2(i,j,k) = (p2(i,j,k)-a(k+1)*p2(i,j,k-1))*z
+        enddo
+        z = bb(i,j,n-1)-a(n)*d(i,j,n-2)
+        if(z.ne.0.d0) then
+          p2(i,j,n-1) = (p2(i,j,n-1)-a(n)*p2(i,j,n-2))/z
+        else
+          p2(i,j,n-1) = 0.d0
+        endif
+        !
+        ! backward substitution
+        !
+        do k=n-2,1,-1
+          p2(i,j,k) = p2(i,j,k) - d(i,j,k)*p2(i,j,k+1)
+        enddo
+
+        p(i,j,n) = (p(i,j,n) - c(n)*p1(i,j,1) - a(n)*p1(i,j,n-1)) / &
+                   (bb(i,j,n) + c(n)*p2(i,j,1) + a(n)*p2(i,j,n-1))
+        do k=1,n-1
+          p(i,j,k) = p1(i,j,k) + p2(i,j,k)*p(i,j,n)
+        enddo
+      enddo
+    enddo
+    !$OMP END DO
+    !$OMP END PARALLEL
+    return
+  end subroutine gaussel_periodic_gpu
+
 #endif
 
   subroutine gaussel(nx,ny,n,a,b,c,lambdaxy,p)
