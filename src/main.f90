@@ -216,7 +216,7 @@ program cans
 
 #ifdef USE_CUDA
   if(myid.eq.0) then 
-      print*, ' GPU accelerated version, grid size:',n
+      print*, ' GPU accelerated version, grid size:',n(1)*dims(1),n(2)*dims(2),n(3)
       #ifndef IMPDIFF
       totEle=(8*int((imax+2)*(jmax+2)*(ktot+2),8) + 6*int(n(1)*n(2)*n(3),8) + 6*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
       #else
@@ -291,17 +291,13 @@ program cans
   ! initialize Poisson solver
   !
   call initsolver(n,dli,dzci,dzfi,cbcpre,bcpre(:,:),lambdaxyp,(/'c','c','c'/),ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
-      print *,"Memory on card",freeMem,totMem
 #ifdef IMPDIFF
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,1),bcvel(:,:,1),lambdaxyu,(/'f','c','c'/),au,bu,cu,arrplanu,normfftu, &
                   rhsbu%x,rhsbu%y,rhsbu%z)
-      print *,"Memory on card",freeMem,totMem
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,2),bcvel(:,:,2),lambdaxyv,(/'c','f','c'/),av,bv,cv,arrplanv,normfftv, &
                   rhsbv%x,rhsbv%y,rhsbv%z)
-      print *,"Memory on card",freeMem,totMem
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,3),bcvel(:,:,3),lambdaxyw,(/'c','c','f'/),aw,bw,cw,arrplanw,normfftw, &
                   rhsbw%x,rhsbw%y,rhsbw%z)
-      print *,"Memory on card",freeMem,totMem
 #endif
 
 #ifdef USE_CUDA
@@ -317,9 +313,6 @@ program cans
   !
   if(myid.eq.0) print*, '*** Calculation loop starts now ***'
   do while(istep.lt.nstep)
-
-      istat=cudaMemGetInfo(freeMem,totMem)
-      print *,"Available Memory (GB) on card", freeMem/(1024.**3)
 
  #ifdef USE_NVTX
       call nvtxStartRange("timestep", istep)
