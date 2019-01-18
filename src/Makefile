@@ -4,9 +4,9 @@ FC   = mpif90
 BIG := # -mcmodel=medium
 DBG := # -g -fbacktrace -Wall -O0 -Wextra -pedantic -fcheck=all
 OMP := #-mp # -fopenmp
-OPT := -O3 -Mcuda=cc70
+OPT := -O3 -Mcuda=cc70,cuda10.0
 #OPT := -O3 -Mcuda=cc70,nofma
-OTH := -DDEBUG -DTIMING -DUSE_CUDA -DUSE_NVTX #-DIMPDIFF
+OTH := -DGPU_MPI -DEPA2A -DDEBUG -DTIMING -DUSE_CUDA -DUSE_NVTX #-DIMPDIFF
 PROF := #-pg
 FFLAGS := $(OPT) $(BIG) $(DBG) $(PROF) $(OMP) $(OTH)
 #
@@ -74,7 +74,7 @@ solver.o: solver.f90 fft.o param.o
 # 2decomp&fft library
 FFLAGS_2DECOMP := -DDOUBLE_PREC# -DOVERWRITE -DEVEN
 2decompdir=2decomp/
-decomp_2d.o: $(2decompdir)decomp_2d.f90
+decomp_2d.o: $(2decompdir)decomp_2d.f90 nvtx.o
 	$(FC) $(FFLAGS) -cpp $(FFLAGS_2DECOMP) -c $(2decompdir)decomp_2d.f90
 io.o: $(2decompdir)io.f90 decomp_2d.o
 	$(FC) $(FFLAGS) -cpp $(FFLAGS_2DECOMP) -c $(2decompdir)io.f90

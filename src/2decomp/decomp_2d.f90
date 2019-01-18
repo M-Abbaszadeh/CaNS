@@ -17,6 +17,9 @@ module decomp_2d
 #ifdef USE_CUDA
   use cudafor
 #endif
+#ifdef USE_NVTX
+  use nvtx
+#endif
   implicit none
 
 #ifdef GLOBAL_ARRAYS
@@ -67,6 +70,13 @@ module decomp_2d
   ! flags for periodic condition in three dimensions
   logical, save :: periodic_x, periodic_y, periodic_z
 
+#ifdef USE_CUDA
+  integer, save :: row_rank, col_rank
+  type(cudaEvent), allocatable, dimension(:) :: a2a_event
+  integer(kind=cuda_stream_kind), public, save :: a2a_comp, a2a_h2d, a2a_d2h
+  integer, allocatable, dimension(:) :: a2a_requests
+#endif
+
 #ifdef SHM
   ! derived type to store shared-memory info
   TYPE, public :: SMP_INFO
@@ -95,6 +105,7 @@ module decomp_2d
      integer, dimension(3) :: xst, xen, xsz  ! x-pencil
      integer, dimension(3) :: yst, yen, ysz  ! y-pencil
      integer, dimension(3) :: zst, zen, zsz  ! z-pencil
+     integer, dimension(3) :: wst, wen, wsz  ! z-pencil ( dims(1)<=>dims(2) )
 
      ! in addition to local information, processors also need to know 
      ! some global information for global communications to work 
@@ -107,14 +118,17 @@ module decomp_2d
 
      ! send/receive buffer counts and displacements for MPI_ALLTOALLV
      integer, allocatable, dimension(:) :: &
-          x1cnts, y1cnts, y2cnts, z2cnts, x2cnts, z1cnts
+          x1cnts, y1cnts, y2cnts, z2cnts, x2cnts, z1cnts, w1cnts, w2cnts
      integer, allocatable, dimension(:) :: &
-          x1disp, y1disp, y2disp, z2disp, x2disp, z1disp
-
+          x1disp, y1disp, y2disp, z2disp, x2disp, z1disp, w1disp, w2disp
+#ifdef USE_CUDA
+     integer, allocatable, dimension(:) :: &
+          x1idx, y1idx, y2idx, z2idx, x2idx, z1idx
+#endif
      ! buffer counts for MPI_ALLTOALL: either for evenly distributed data
      ! or for padded-alltoall
      integer :: x1count, y1count, y2count, z2count, x2count, z1count
-!
+
      ! buffer counts, displacements and types for MPI_Alltoallw to transform
      ! directly between x- and z-pencils
      ! This is only for the complex datatype
@@ -167,7 +181,14 @@ module decomp_2d
   real(mytype),    allocatable, dimension(:) :: work1_r, work2_r
   complex(mytype), allocatable, dimension(:) :: work1_c, work2_c
 #ifdef USE_CUDA
-  attributes( pinned ) :: work1_r, work2_r, work1_c, work2_c
+#ifndef EPA2A
+  attributes( pinned ) :: work1_r, work2_r
+#endif
+#ifdef GPU_MPI
+  real(mytype), allocatable, dimension(:), device :: work1_r_d, work2_r_d
+#else
+  real(mytype), allocatable, dimension(:), pinned :: work1_r_d, work2_r_d
+#endif
 #endif
 
   ! public user routines
@@ -243,12 +264,18 @@ module decomp_2d
 
   interface transpose_z_to_x
 ! not available
+#ifdef USE_CUDA
+     module procedure transpose_z_to_x_real_d
+#endif
      module procedure transpose_z_to_x_real
 !     module procedure transpose_z_to_x_complex
   end interface transpose_z_to_x
 
   interface transpose_x_to_z
 ! not available
+#ifdef USE_CUDA
+     module procedure transpose_x_to_z_real_d
+#endif
      module procedure transpose_x_to_z_real
 !     module procedure transpose_x_to_z_complex
   end interface transpose_x_to_z
@@ -351,7 +378,9 @@ contains
     logical, dimension(3), intent(IN), optional :: periodic_bc
     
     integer :: errorcode, ierror, row, col
-    
+#ifdef USE_CUDA
+    integer :: istat, m
+#endif
 #ifdef SHM_DEBUG
     character(len=80) fname
 #endif
@@ -373,6 +402,17 @@ contains
     call MPI_COMM_RANK(MPI_COMM_WORLD,nrank,ierror)
     call MPI_COMM_SIZE(MPI_COMM_WORLD,nproc,ierror)
 
+#ifdef USE_CUDA
+    allocate( a2a_event(0:nproc*2) )
+    allocate( a2a_requests(0:nproc*2) )
+    do m=0,nproc*2
+      istat = cudaEventCreate( a2a_event(m) )
+    enddo
+    istat = cudaStreamCreate( a2a_comp )
+    istat = cudaStreamCreate( a2a_d2h  )
+    istat = cudaStreamCreate( a2a_h2d  )
+#endif
+
     if (p_row==0 .and. p_col==0) then
        ! determine the best 2D processor grid
        call best_2d_grid(nproc, row, col)
@@ -384,6 +424,10 @@ contains
        else
           row = p_row
           col = p_col
+          if (nrank==0) then
+             write(*,*) 'the used processor grid is ', row,' by ', col
+          end if
+
        end if
     end if
     
@@ -416,6 +460,11 @@ contains
          DECOMP_2D_COMM_COL,ierror)
     call MPI_CART_SUB(DECOMP_2D_COMM_CART_X,(/.false.,.true./), &
          DECOMP_2D_COMM_ROW,ierror)
+
+#ifdef USE_CUDA
+    call MPI_COMM_RANK(DECOMP_2D_COMM_COL,col_rank,ierror)
+    call MPI_COMM_RANK(DECOMP_2D_COMM_ROW,row_rank,ierror)
+#endif
 
     ! gather information for halo-cell support code
     call init_neighbour
@@ -517,7 +566,9 @@ contains
 
     decomp_buf_size = 0
     deallocate(work1_r, work2_r, work1_c, work2_c)
-    
+#ifdef USE_CUDA
+    deallocate(work1_r_d, work2_r_d)
+#endif
     return
   end subroutine decomp_2d_finalize
 
@@ -554,7 +605,9 @@ contains
     TYPE(DECOMP_INFO), intent(INOUT) :: decomp
 
     integer :: buf_size, status, errorcode
-
+#ifdef USE_CUDA
+    integer :: i
+#endif
     ! verify the global size can actually be distributed as pencils
     if (nx<dims(1) .or. ny<dims(1) .or. ny<dims(2) .or. nz<dims(2)) then
        errorcode = 6
@@ -575,16 +628,40 @@ contains
     !allocate(decomp%x1dist(0:dims(1)-1),decomp%y1dist(0:dims(1)-1), &
     !     decomp%y2dist(0:dims(2)-1),decomp%z2dist(0:dims(2)-1))
     allocate(decomp%x1dist(0:dims(1)-1),decomp%y1dist(0:dims(1)-1), &
-         decomp%y2dist(0:dims(2)-1),decomp%z2dist(0:dims(2)-1), &
-         decomp%x2dist(0:dims(2)-1),decomp%z1dist(0:dims(1)-1))
+             decomp%y2dist(0:dims(2)-1),decomp%z2dist(0:dims(2)-1), &
+             decomp%x2dist(0:dims(2)-1),decomp%z1dist(0:dims(1)-1))
     allocate(decomp%x1st(0:dims(1)-1),decomp%x1en(0:dims(1)-1), &
-         decomp%y1st(0:dims(1)-1),decomp%y1en(0:dims(1)-1), &
-         decomp%z1st(0:dims(1)-1),decomp%z1en(0:dims(1)-1))
+             decomp%y1st(0:dims(1)-1),decomp%y1en(0:dims(1)-1), &
+             decomp%z1st(0:dims(1)-1),decomp%z1en(0:dims(1)-1))
     allocate(decomp%x2st(0:dims(2)-1),decomp%x2en(0:dims(2)-1), &
-         decomp%y2st(0:dims(2)-1),decomp%y2en(0:dims(2)-1), &
-         decomp%z2st(0:dims(2)-1),decomp%z2en(0:dims(2)-1))
+             decomp%y2st(0:dims(2)-1),decomp%y2en(0:dims(2)-1), &
+             decomp%z2st(0:dims(2)-1),decomp%z2en(0:dims(2)-1))
     call get_dist(nx,ny,nz,decomp)
     
+#ifdef USE_CUDA
+    allocate(decomp%x1idx(0:dims(1)-1),decomp%y1idx(0:dims(1)-1), &
+             decomp%y2idx(0:dims(2)-1),decomp%z2idx(0:dims(2)-1), &
+             decomp%x2idx(0:dims(2)-1),decomp%z1idx(0:dims(1)-1))
+
+    decomp%x1idx(0) = 1
+    decomp%y1idx(0) = 1
+    decomp%z1idx(0) = 1
+    do i=1,dims(1)-1
+      decomp%x1idx(i) = decomp%x1idx(i-1) + decomp%x1dist(i-1)
+      decomp%y1idx(i) = decomp%y1idx(i-1) + decomp%y1dist(i-1)
+      decomp%z1idx(i) = decomp%z1idx(i-1) + decomp%z1dist(i-1)
+    end do
+
+    decomp%x2idx(0) = 1
+    decomp%y2idx(0) = 1
+    decomp%z2idx(0) = 1
+    do i=1,dims(2)-1
+      decomp%x2idx(i) = decomp%x2idx(i-1) + decomp%x2dist(i-1)
+      decomp%y2idx(i) = decomp%y2idx(i-1) + decomp%y2dist(i-1)
+      decomp%z2idx(i) = decomp%z2idx(i-1) + decomp%z2dist(i-1)
+    end do
+#endif
+
     ! generate partition information - starting/ending index etc.
     call partition(nx, ny, nz, (/ 1,2,3 /), &
          decomp%xst, decomp%xen, decomp%xsz)
@@ -592,23 +669,26 @@ contains
          decomp%yst, decomp%yen, decomp%ysz)
     call partition(nx, ny, nz, (/ 2,3,1 /), &
          decomp%zst, decomp%zen, decomp%zsz)
-    
+    call partition(nx, ny, nz, (/ 3,2,1 /), &
+         decomp%wst, decomp%wen, decomp%wsz)
+
     ! prepare send/receive buffer displacement and count for ALLTOALL(V)
-    !allocate(decomp%x1cnts(0:dims(1)-1),decomp%y1cnts(0:dims(1)-1), &
-    !     decomp%y2cnts(0:dims(2)-1),decomp%z2cnts(0:dims(2)-1))
-    !allocate(decomp%x1disp(0:dims(1)-1),decomp%y1disp(0:dims(1)-1), &
-    !     decomp%y2disp(0:dims(2)-1),decomp%z2disp(0:dims(2)-1))
     allocate(decomp%x1cnts(0:dims(1)-1),decomp%y1cnts(0:dims(1)-1), &
-         decomp%y2cnts(0:dims(2)-1),decomp%z2cnts(0:dims(2)-1), &
-         decomp%z1cnts(0:dims(1)-1),decomp%x2cnts(0:dims(2)-1))
+             decomp%y2cnts(0:dims(2)-1),decomp%z2cnts(0:dims(2)-1), &
+             decomp%z1cnts(0:dims(1)-1),decomp%x2cnts(0:dims(2)-1), &
+             decomp%w1cnts(0:dims(1)-1),decomp%w2cnts(0:dims(2)-1))
+
     allocate(decomp%x1disp(0:dims(1)-1),decomp%y1disp(0:dims(1)-1), &
-         decomp%y2disp(0:dims(2)-1),decomp%z2disp(0:dims(2)-1), &
-         decomp%x2disp(0:dims(2)-1),decomp%z1disp(0:dims(1)-1))
-     ! allocate arrays for MPI_ALLTOALLW calls
+             decomp%y2disp(0:dims(2)-1),decomp%z2disp(0:dims(2)-1), &
+             decomp%x2disp(0:dims(2)-1),decomp%z1disp(0:dims(1)-1), &
+             decomp%w2disp(0:dims(2)-1),decomp%w1disp(0:dims(1)-1))
+
+    ! allocate arrays for MPI_ALLTOALLW calls
     allocate(decomp%xcnts_xz(nproc),decomp%zcnts_xz(nproc))
     allocate(decomp%xtypes_xz(nproc),decomp%ztypes_xz(nproc))
     allocate(decomp%xdispls_xz(nproc))
     allocate(decomp%zdispls_xz(nproc))
+
     call prepare_buffer(decomp)
 
 #ifdef SHM
@@ -619,9 +699,10 @@ contains
     ! allocate memory for the MPI_ALLTOALL(V) buffers
     ! define the buffers globally for performance reason
     
-    buf_size = max(decomp%xsz(1)*decomp%xsz(2)*decomp%xsz(3), &
-         max(decomp%ysz(1)*decomp%ysz(2)*decomp%ysz(3), &
-         decomp%zsz(1)*decomp%zsz(2)*decomp%zsz(3)) )
+    buf_size = max(decomp%wsz(1)*decomp%wsz(2)*decomp%wsz(3), &
+               max(decomp%xsz(1)*decomp%xsz(2)*decomp%xsz(3), &
+               max(decomp%ysz(1)*decomp%ysz(2)*decomp%ysz(3), &
+                   decomp%zsz(1)*decomp%zsz(2)*decomp%zsz(3))))
 #ifdef EVEN
     ! padded alltoall optimisation may need larger buffer space
     buf_size = max(buf_size, &
@@ -632,6 +713,12 @@ contains
     ! *** TODO: consider how to share the real/complex buffers 
     if (buf_size > decomp_buf_size) then
        decomp_buf_size = buf_size
+#ifdef USE_CUDA
+       if (allocated(work1_r_d)) deallocate(work1_r_d)
+       if (allocated(work2_r_d)) deallocate(work2_r_d)
+       allocate(work1_r_d(buf_size), STAT=status)
+       allocate(work2_r_d(buf_size), STAT=status)
+#endif
        if (allocated(work1_r)) deallocate(work1_r)
        if (allocated(work2_r)) deallocate(work2_r)
        if (allocated(work1_c)) deallocate(work1_c)
@@ -669,9 +756,13 @@ contains
     deallocate(decomp%x1en,decomp%y1en,decomp%y2en,decomp%z2en)
     deallocate(decomp%z1en,decomp%x2en)
     deallocate(decomp%x1cnts,decomp%y1cnts,decomp%y2cnts,decomp%z2cnts)
-    deallocate(decomp%z1cnts,decomp%x2cnts)
+    deallocate(decomp%z1cnts,decomp%x2cnts,decomp%w1cnts,decomp%w2cnts)
     deallocate(decomp%x1disp,decomp%y1disp,decomp%y2disp,decomp%z2disp)
-    deallocate(decomp%z1disp,decomp%x2disp)
+    deallocate(decomp%z1disp,decomp%x2disp,decomp%w1disp,decomp%w2disp)
+#ifdef USE_CUDA
+    deallocate(decomp%x1idx,decomp%y1idx,decomp%z1idx)
+    deallocate(decomp%x2idx,decomp%y2idx,decomp%z2idx)
+#endif
     do i=1,nproc
       if (decomp%ztypes_xz(i).ne.MPI_INTEGER) then
         call MPI_Type_free(decomp%ztypes_xz(i),ierror)
@@ -830,7 +921,9 @@ contains
 !    deallocate(st,en)
     call distribute(nx,dims(1),decomp%x1st,decomp%x1en,decomp%x1dist)
     call distribute(ny,dims(1),decomp%y1st,decomp%y1en,decomp%y1dist)
+    call distribute(nz,dims(1),decomp%z1st,decomp%z1en,decomp%z1dist)
 
+    call distribute(nx,dims(2),decomp%x2st,decomp%x2en,decomp%x2dist)
     call distribute(ny,dims(2),decomp%y2st,decomp%y2en,decomp%y2dist)
     call distribute(nz,dims(2),decomp%z2st,decomp%z2en,decomp%z2dist)
 
@@ -845,7 +938,7 @@ contains
     implicit none
     
     TYPE(DECOMP_INFO), intent(INOUT) :: decomp
-!
+
     integer :: i, k
     integer :: rank_x, rank_z
     integer :: subsize_y, offset_y
@@ -856,21 +949,22 @@ contains
     integer :: index_src, index_dest
 #endif
 
-!    integer :: i
-!
-!    ! MPI_ALLTOALLV buffer information
+    ! MPI_ALLTOALLV buffer information
     do i=0, dims(1)-1
        decomp%x1cnts(i) = decomp%x1dist(i)*decomp%xsz(2)*decomp%xsz(3)
        decomp%y1cnts(i) = decomp%ysz(1)*decomp%y1dist(i)*decomp%ysz(3)
        decomp%z1cnts(i) = decomp%zsz(1)*decomp%zsz(2)*decomp%z1dist(i)
+       decomp%w1cnts(i) = decomp%wsz(1)*decomp%wsz(2)*decomp%z1dist(i)
        if (i==0) then
           decomp%x1disp(i) = 0  ! displacement is 0-based index
           decomp%y1disp(i) = 0
           decomp%z1disp(i) = 0
+          decomp%w1disp(i) = 0
        else
           decomp%x1disp(i) = decomp%x1disp(i-1) + decomp%x1cnts(i-1)
           decomp%y1disp(i) = decomp%y1disp(i-1) + decomp%y1cnts(i-1)
           decomp%z1disp(i) = decomp%z1disp(i-1) + decomp%z1cnts(i-1)
+          decomp%w1disp(i) = decomp%w1disp(i-1) + decomp%w1cnts(i-1)
        end if
     end do
 
@@ -878,17 +972,20 @@ contains
        decomp%x2cnts(i) = decomp%x2dist(i)*decomp%xsz(2)*decomp%xsz(3)
        decomp%y2cnts(i) = decomp%ysz(1)*decomp%y2dist(i)*decomp%ysz(3)
        decomp%z2cnts(i) = decomp%zsz(1)*decomp%zsz(2)*decomp%z2dist(i)
+       decomp%w2cnts(i) = decomp%wsz(1)*decomp%wsz(2)*decomp%z2dist(i)
        if (i==0) then
           decomp%x2disp(i) = 0  ! displacement is 0-based index
           decomp%y2disp(i) = 0  ! displacement is 0-based index
           decomp%z2disp(i) = 0
+          decomp%w2disp(i) = 0
        else
           decomp%x2disp(i) = decomp%x2disp(i-1) + decomp%x2cnts(i-1)
           decomp%y2disp(i) = decomp%y2disp(i-1) + decomp%y2cnts(i-1)
           decomp%z2disp(i) = decomp%z2disp(i-1) + decomp%z2cnts(i-1)
+          decomp%w2disp(i) = decomp%w2disp(i-1) + decomp%w2cnts(i-1)
        end if
     end do
-!
+
 !    do i=0, dims(1)-1
 !       decomp%x1cnts(i) = decomp%x1dist(i)*decomp%xsz(2)*decomp%xsz(3)
 !       decomp%y1cnts(i) = decomp%ysz(1)*decomp%y1dist(i)*decomp%ysz(3)

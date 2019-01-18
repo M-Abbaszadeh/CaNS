@@ -11,6 +11,10 @@ module mod_common_mpi
   real(8), allocatable, dimension(:,:) :: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
 #ifdef USE_CUDA
   integer :: mydev
+#ifdef GPU_MPI
+  attributes( device ) :: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
+#else
   attributes( managed ) :: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
+#endif
 #endif
 end module mod_common_mpi

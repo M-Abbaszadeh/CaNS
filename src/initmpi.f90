@@ -27,10 +27,11 @@ module mod_initmpi
 !  will be allocated on device 0
     mydev=0
     call MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, &
-         MPI_INFO_NULL, local_comm,ierr)
-    call MPI_Comm_rank(local_comm, mydev,ierr)
+         MPI_INFO_NULL, local_comm, ierr)
+    call MPI_Comm_rank(local_comm, mydev, ierr)
     ierr = cudaSetDevice(mydev)
     print  *," MPI rank",mydev," using GPU",mydev
+
 #endif
 
     periods(:) = .false.
@@ -73,6 +74,7 @@ module mod_initmpi
     if( .not. allocated( yrr_buf ) ) allocate( yrr_buf( 0:ntx-1, 0:ntz-1 ) )
 
 #ifdef USE_CUDA
+#ifndef GPU_MPI
     istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
     istat = cudaMemAdvise(        xsl_buf, size(xsl_buf), cudaMemAdviseSetAccessedBy, mydev )
     istat = cudaMemPrefetchAsync( xsl_buf, size(xsl_buf), cudaCpuDeviceId, 0 )
@@ -97,6 +99,7 @@ module mod_initmpi
     istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetPreferredLocation, cudaCpuDeviceId )
     istat = cudaMemAdvise(        yrr_buf, size(yrr_buf), cudaMemAdviseSetAccessedBy, mydev )
     istat = cudaMemPrefetchAsync( yrr_buf, size(yrr_buf), cudaCpuDeviceId, 0 )
+#endif
 #endif
 
  return

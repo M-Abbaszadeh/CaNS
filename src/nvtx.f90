@@ -104,4 +104,30 @@ contains
 #endif
   end subroutine nvtxEndRange
 
+  subroutine nvtxStartRangeAsync(name,id)
+    character(kind=c_char,len=*) :: name
+    integer, optional:: id
+#ifdef USE_CUDA
+#ifdef USE_NVTX
+    type(nvtxEventAttributes):: event
+    tempName=trim(name)//c_null_char
+    if ( .not. present(id)) then
+       call nvtxRangePush(tempName)
+    else
+       event%color=col(mod(id,7)+1)
+       event%message=c_loc(tempName)
+       call nvtxRangePushEx(event)
+    end if
+#endif
+#endif
+  end subroutine nvtxStartRangeAsync
+
+  subroutine nvtxEndRangeAsync
+#ifdef USE_CUDA
+#ifdef USE_NVTX
+    call nvtxRangePop
+#endif
+#endif
+  end subroutine nvtxEndRangeAsync
+
 end module nvtx
