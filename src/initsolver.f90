@@ -17,7 +17,12 @@ module mod_initsolver
     real(8), intent(in), dimension(0:) :: dzci,dzfi
     character(len=1), intent(in), dimension(0:1,3) :: cbc
     real(8)         , intent(in), dimension(0:1,3) :: bc
+#ifdef USE_CUDA
+    real(8), intent(out), dimension((n(1)*dims(1))/dims(2),(n(2)*dims(2))/dims(1)) :: lambdaxy
+    integer, dimension(3) :: nt
+#else
     real(8), intent(out), dimension(n(1),n(2)) :: lambdaxy
+#endif
     character(len=1), intent(in), dimension(3) :: c_or_f
     real(8), intent(out), dimension(n(3)) :: a,b,c
     type(C_PTR), intent(out), dimension(2,2) :: arrplan
@@ -44,6 +49,20 @@ module mod_initsolver
     !
     ! add eigenvalues
     !
+#ifdef USE_CUDA
+    !use new z pencils
+    nt(1) = ng(1)/dims(2)
+    nt(2) = ng(2)/dims(1)
+    nt(3) = ng(3)
+
+    do j=1,nt(2)
+      jj = coord(1)*nt(2)+j
+      do i=1,nt(1)
+        ii = coord(2)*nt(1)+i
+        lambdaxy(i,j) = lambdax(ii)+lambday(jj)
+      enddo
+    enddo
+#else
     do j=1,n(2)
       jj = coord(2)*n(2)+j
       do i=1,n(1)
@@ -51,6 +70,7 @@ module mod_initsolver
         lambdaxy(i,j) = lambdax(ii)+lambday(jj)
       enddo
     enddo
+#endif
     !
     ! compute coefficients for tridiagonal solver
     !

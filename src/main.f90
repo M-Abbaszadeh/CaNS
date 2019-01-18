@@ -165,9 +165,15 @@ program cans
   allocate(rhsbw%x(n(2),n(3),0:1))
   allocate(rhsbw%y(n(1),n(3),0:1))
   allocate(rhsbw%z(n(1),n(2),0:1))
+#ifdef USE_CUDA
+  allocate(lambdaxyu(itot/dims(2),jtot/dims(1)))
+  allocate(lambdaxyv(itot/dims(2),jtot/dims(1)))
+  allocate(lambdaxyw(itot/dims(2),jtot/dims(1)))
+#else
   allocate(lambdaxyu(imax,jmax))
   allocate(lambdaxyv(imax,jmax))
   allocate(lambdaxyw(imax,jmax))
+#endif
   allocate(au(ktot)) 
   allocate(bu(ktot))
   allocate(cu(ktot)) 
@@ -184,8 +190,11 @@ program cans
   allocate(rhsbp%x(n(2),n(3),0:1))
   allocate(rhsbp%y(n(1),n(3),0:1))
   allocate(rhsbp%z(n(1),n(2),0:1))
-
+#ifdef USE_CUDA
+  allocate(lambdaxyp(itot/dims(2),jtot/dims(1)))
+#else
   allocate(lambdaxyp(imax,jmax))
+#endif
   allocate(ap(ktot)) 
   allocate(bp(ktot))
   allocate(cp(ktot)) 
