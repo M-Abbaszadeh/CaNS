@@ -580,7 +580,7 @@ module mod_bound
     character(len=1), intent(in), dimension(0:1,3) :: cbc
     integer, intent(in), dimension(3) :: n
     real(8), intent(in), dimension(:,:,0:) :: rhsbx,rhsby,rhsbz
-    real(8), intent(inout), dimension(:,:,:) :: p
+    real(8), intent(inout), dimension(0:,0:,0:) :: p
     integer, dimension(3) :: q
     integer :: idir
 #ifdef USE_CUDA
@@ -601,7 +601,7 @@ module mod_bound
       end do
      #else
       !$OMP WORKSHARE
-      p(1   ,:,:) = p(1   ,:,:) + rhsbx(:,:,0)
+      p(1   ,1:,1:) = p(1   ,1:,1:) + rhsbx(:,:,0)
       !$OMP END WORKSHARE
      #endif
     endif  
@@ -616,7 +616,7 @@ module mod_bound
       end do
      #else
       !$OMP WORKSHARE
-      p(n(1)-q(1),:,:) = p(n(1)-q(1),:,:) + rhsbx(:,:,1)
+      p(n(1)-q(1),1:,1:) = p(n(1)-q(1),1:,1:) + rhsbx(:,:,1)
       !$OMP END WORKSHARE
      #endif
     endif
@@ -630,7 +630,7 @@ module mod_bound
       end do
      #else
       !$OMP WORKSHARE
-      p(:,1   ,:) = p(:,1   ,:) + rhsby(:,:,0)
+      p(1:,1   ,1:) = p(1:,1   ,1:) + rhsby(:,:,0)
       !$OMP END WORKSHARE
      #endif
     endif
@@ -645,7 +645,7 @@ module mod_bound
       end do
      #else
       !$OMP WORKSHARE
-      p(:,n(2)-q(2),:) = p(:,n(2)-q(2),:) + rhsby(:,:,1)
+      p(1:,n(2)-q(2),1:) = p(1:,n(2)-q(2),1:) + rhsby(:,:,1)
       !$OMP END WORKSHARE
      #endif
     endif
@@ -660,8 +660,8 @@ module mod_bound
       end do
      #else
     !$OMP WORKSHARE
-    p(:,:,1   ) = p(:,:,1   ) + rhsbz(:,:,0)
-    p(:,:,n(3)-q(3)) = p(:,:,n(3)-q(3)) + rhsbz(:,:,1)
+    p(1:,1:,1   ) = p(1:,1:,1   ) + rhsbz(:,:,0)
+    p(1:,1:,n(3)-q(3)) = p(1:,1:,n(3)-q(3)) + rhsbz(:,:,1)
     !$OMP END WORKSHARE
     #endif
     return
