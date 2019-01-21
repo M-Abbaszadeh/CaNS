@@ -272,11 +272,13 @@ module mod_bound
                do k=lbound(p,3),ubound(p,3)
                  do j=lbound(p,2),ubound(p,2)
                   p(n,j,k) = factor 
+                  p(n+1,j,k) = p(n-1,j,k)
                  end do
                end do
            #else
             !$OMP WORKSHARE
             p(n,:,:) = factor
+            p(n+1,:,:) = p(n-1,:,:)
             !$OMP END WORKSHARE
            #endif
           endif
@@ -300,11 +302,13 @@ module mod_bound
                do k=lbound(p,3),ubound(p,3)
                  do i=lbound(p,1),ubound(p,1)
                   p(i,n  ,k) = factor
+                  p(i,n+1,k) = p(i,n-1,k)
                  end do
                end do
            #else
             !$OMP WORKSHARE
             p(:,n,:) = factor
+            p(:,n+1,:) = p(:,n-1,:)
             !$OMP END WORKSHARE
            #endif
           endif
@@ -328,11 +332,13 @@ module mod_bound
               do j=lbound(p,2),ubound(p,2)
                do i=lbound(p,1),ubound(p,1)
                  p(i,j,n) = factor
+                 p(i,j,n+1) = p(i,j,n-1)
                end do
               end do
              #else
             !$OMP WORKSHARE
             p(:,:,n) = factor
+            p(:,:,n+1) = p(:,:,n-1)
             !$OMP END WORKSHARE
             #endif
           endif
