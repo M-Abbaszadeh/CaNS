@@ -64,9 +64,13 @@
     ! self
     m = col_rank
     pos = decomp%y1disp(m) + 1
-    !TODO: replace these two copy with a 3D copy or custom kernel for direct src => dst
-    istat = cudaMemcpy2DAsync( work2_r_d(pos), decomp%x1dist(m), src(decomp%x1idx(m),1,1), s1, decomp%x1dist(m), s2*s3, stream=a2a_comp )
-    istat = cudaMemcpy2DAsync( dst(1,decomp%y1idx(m),1), d1*d2, work2_r_d(pos), d1*(decomp%y1dist(m)), d1*(decomp%y1dist(m)), d3, stream=a2a_comp )
+    if( dims(1) .eq. 1 ) then
+      istat = cudaMemcpy2DAsync( dst, d1*d2, src, d1*d2, d1*d2, d3, stream=a2a_comp )
+    else
+      !TODO: replace these two copy with a 3D copy or custom kernel for direct src => dst
+      istat = cudaMemcpy2DAsync( work2_r_d(pos), decomp%x1dist(m), src(decomp%x1idx(m),1,1), s1, decomp%x1dist(m), s2*s3, stream=a2a_comp )
+      istat = cudaMemcpy2DAsync( dst(1,decomp%y1idx(m),1), d1*d2, work2_r_d(pos), d1*(decomp%y1dist(m)), d1*(decomp%y1dist(m)), d3, stream=a2a_comp )
+    endif
 
     do iter=1,dims(1)-1
       if( pow2 ) then
