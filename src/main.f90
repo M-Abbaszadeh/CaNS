@@ -140,22 +140,12 @@ program cans
 !
 ! Allocate memory.
 !
-#ifdef USE_CUDA
-  istat = cudaMemAdvise( u, size(u), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( v, size(v), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( w, size(w), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( p, size(p), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( up, size(up), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( vp, size(vp), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( wp, size(wp), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( pp, size(pp), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dudtrk_A, size(dudtrk_A), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dvdtrk_A, size(dvdtrk_A), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dwdtrk_A, size(dwdtrk_A), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dudtrk_B, size(dudtrk_B), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dvdtrk_B, size(dvdtrk_B), cudaMemAdviseSetPreferredLocation, mydev )
-  istat = cudaMemAdvise( dwdtrk_B, size(dwdtrk_B), cudaMemAdviseSetPreferredLocation, mydev )
-#endif
+  dudtrko => dudtrk_A
+  dvdtrko => dvdtrk_A
+  dwdtrko => dwdtrk_A
+  dudtrk => dudtrk_B
+  dvdtrk => dudtrk_B
+  dwdtrk => dudtrk_B
 
   allocate( u(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate( v(0:imax+1,0:jmax+1,0:ktot+1))
@@ -165,13 +155,29 @@ program cans
   allocate(vp(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate(wp(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate(pp(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(dudtrk_A(imax,jmax,ktot))
-  allocate(dvdtrk_A(imax,jmax,ktot))
-  allocate(dwdtrk_A(imax,jmax,ktot))
-  allocate(dudtrk_B(imax,jmax,ktot))
-  allocate(dvdtrk_B(imax,jmax,ktot))
-  allocate(dwdtrk_B(imax,jmax,ktot))
+  allocate(dudtrko(imax,jmax,ktot))
+  allocate(dvdtrko(imax,jmax,ktot))
+  allocate(dwdtrko(imax,jmax,ktot))
+  allocate(dudtrk(imax,jmax,ktot))
+  allocate(dvdtrk(imax,jmax,ktot))
+  allocate(dwdtrk(imax,jmax,ktot))
+
 #ifdef USE_CUDA
+  istat = cudaMemAdvise( u, size(u), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( v, size(v), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( w, size(w), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( p, size(p), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( up, size(up), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( vp, size(vp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( wp, size(wp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( pp, size(pp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dudtrko, size(dudtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dvdtrko, size(dvdtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dwdtrko, size(dwdtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dudtrk, size(dudtrk), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dvdtrk, size(dvdtrk), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dwdtrk, size(dwdtrk), cudaMemAdviseSetPreferredLocation, mydev )
+
   istat = cudaMemPrefetchAsync( u, size(u), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( v, size(v), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( w, size(w), cudaCpuDeviceId, 0 )
@@ -180,20 +186,13 @@ program cans
   istat = cudaMemPrefetchAsync( vp, size(vp), mydev, 0 )
   istat = cudaMemPrefetchAsync( wp, size(wp), mydev, 0 )
   istat = cudaMemPrefetchAsync( pp, size(pp), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dudtrk_A, size(dudtrk_A), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dvdtrk_A, size(dvdtrk_A), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dwdtrk_A, size(dwdtrk_A), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dudtrk_B, size(dudtrk_B), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dvdtrk_B, size(dvdtrk_B), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dwdtrk_B, size(dwdtrk_B), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dudtrko, size(dudtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dvdtrko, size(dvdtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dwdtrko, size(dwdtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dudtrk, size(dudtrk), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dvdtrk, size(dvdtrk), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dwdtrk, size(dwdtrk), mydev, 0 )
 #endif
-
-  dudtrko => dudtrk_A
-  dvdtrko => dvdtrk_A
-  dwdtrko => dwdtrk_A
-  dudtrk => dudtrk_B
-  dvdtrk => dudtrk_B
-  dwdtrk => dudtrk_B
 
 #ifdef IMPDIFF
   allocate(dudtrkd(imax,jmax,ktot))    
@@ -820,8 +819,8 @@ program cans
 ! Deallocate memory.
 !
   deallocate( u,v,w,p,up,vp,wp,pp)
-  deallocate(dudtrk_A,dvdtrk_A,dwdtrk_A)
-  deallocate(dudtrk_B,dvdtrk_B,dwdtrk_B)
+  deallocate(dudtrko,dvdtrko,dwdtrko)
+  deallocate(dudtrk,dvdtrk,dwdtrk)
 #ifdef IMPDIFF
   deallocate(dudtrkd,dvdtrkd,dwdtrkd)
   deallocate(rhsbu%x,rhsbu%y,rhsbu%z)
