@@ -282,6 +282,7 @@ module mod_solver
 
 #endif
 
+#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -294,8 +295,12 @@ module mod_solver
     enddo
     !
     call transpose_z_to_y(pz,py)
+#else
+    call transpose_zp_to_yt( pz, py, pz_pad, py_t )
+#endif
     !
 #ifdef USE_CUDA
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
@@ -304,10 +309,12 @@ module mod_solver
     enddo
     enddo
     enddo
+#endif
 
     istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
 
 #ifdef EPHC
+#ifndef EPHC
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)/dims(2)
@@ -321,6 +328,7 @@ module mod_solver
       end do
     end do
     end do
+#endif
 #else
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,*>>>
@@ -341,12 +349,17 @@ module mod_solver
     call fftd(arrplan(1,2),py) ! fwd transform in y
 #endif
     !
+#ifdef EPHC
+    call transpose_yct_to_x(py,px,pyc_t)
+#else
     call transpose_y_to_x(py,px)
+#endif
     !
 #ifdef USE_CUDA
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
 
 #ifdef EPHC
+#ifndef EPHC
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -360,6 +373,7 @@ module mod_solver
       end do
     end do
     end do
+#endif
 #else
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
@@ -381,7 +395,11 @@ module mod_solver
 #endif
     !
 #ifdef USE_CUDA
+#ifdef EPHC
+    call transpose_xc_to_z(px,pw,pxc)
+#else
     call transpose_x_to_z(px,pw)
+#endif
 #else
     call transpose_x_to_y(px,py)
     call transpose_y_to_z(py,pz)
@@ -404,7 +422,11 @@ module mod_solver
     endif
     !
 #ifdef USE_CUDA
+#ifdef EPHC
+    call transpose_z_to_xc(pw,px,pxc)
+#else
     call transpose_z_to_x(pw,px)
+#endif
 #else
     call transpose_z_to_y(pz,py)
     call transpose_y_to_x(py,px)
@@ -413,6 +435,7 @@ module mod_solver
 #ifdef USE_CUDA
 
 #ifdef EPHC
+#ifndef EPHC
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -426,6 +449,7 @@ module mod_solver
       end do
     end do
     end do
+#endif
 #else
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
@@ -452,11 +476,16 @@ module mod_solver
     call ffti(arrplan(2,1),px) ! bwd transform in x
 #endif
     !
+#ifdef EPHC
+    call transpose_x_to_yct(px,py,pyc_t)
+#else
     call transpose_x_to_y(px,py)
+#endif
     !
 #ifdef USE_CUDA
 
 #ifdef EPHC
+#ifndef EPHC
     !pyc_t = 0.d0
 
     ng2 = ng(2)
@@ -472,6 +501,7 @@ module mod_solver
       end do
     end do
     end do
+#endif
 #else
     !pyc_t = (0.d0,0.d0)
 
@@ -496,6 +526,7 @@ module mod_solver
 #endif
     istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
 
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do i=1,ng(2)
@@ -504,12 +535,18 @@ module mod_solver
     enddo
     enddo
     enddo
+#endif
 #else
     call ffti(arrplan(2,2),py) ! bwd transform in y
 #endif
     !
+#ifdef EPHC
+    call transpose_yt_to_zp( py, pz, py_t, pz_pad, normfft )
+#else
     call transpose_y_to_z(py,pz)
+#endif
     !
+#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -520,6 +557,7 @@ module mod_solver
     enddo
     enddo
     enddo
+#endif
 
 #ifdef EPHC
     endif

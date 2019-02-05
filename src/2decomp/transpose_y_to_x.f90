@@ -12,6 +12,200 @@
 ! This file contains the routines that transpose data from Y to X pencil
 
 #ifdef USE_CUDA
+  subroutine transpose_yct_to_x(src, dst, yct, opt_decomp)
+    implicit none
+    real(mytype), dimension(:,:,:), intent(INOUT) :: src
+    real(mytype), dimension(:,:,:), intent(OUT) :: dst
+    real(mytype), dimension(:,:,:), intent(INOUT) :: yct
+    TYPE(DECOMP_INFO), intent(IN), optional :: opt_decomp
+    attributes( managed ) :: src, dst
+    attributes( device ) :: yct
+    TYPE(DECOMP_INFO) :: decomp
+
+    integer :: s1,s2,s3,d1,d2,d3
+    integer :: ierror, istat, m, i1, i2, pos
+    integer :: iter, dest, sorc, pow2
+    integer :: i,j,k,jstart,jend,idx,decomp_y1distm
+    integer ::       istart,iend,    decomp_x1distm
+#ifdef USE_NVTX
+    call nvtxStartRange("tranYctX",7)
+#endif
+    if (present(opt_decomp)) then
+       decomp = opt_decomp
+    else
+       decomp = decomp_main
+    end if
+
+    s1 = SIZE(src,1)
+    s2 = SIZE(src,2)
+    s3 = SIZE(src,3)
+    d1 = SIZE(dst,1)
+    d2 = SIZE(dst,2)
+    d3 = SIZE(dst,3)
+
+#ifdef EPA2A
+
+#ifndef EPHC
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,s3
+    do j=1,s2
+    do i=1,s1
+      if( j .eq. 1 ) then
+        src(i,j,k) = yct(j,i,k)
+      else
+        src(i,j,k) = yct(j+1,i,k)
+      endif
+    end do
+    end do
+    end do
+#endif
+
+    if(IAND(dims(1),dims(1)-1)==0) then
+      pow2 = 1
+    else
+      pow2 = 0
+    endif
+
+    ! rearrange source array as send buffer
+    do iter=1,dims(1)-1
+       if( pow2 ) then
+         dest = IEOR(col_rank,iter)
+       else
+         dest = mod(col_rank + iter, dims(1))
+       endif
+       m = dest
+       pos = decomp%y1disp(m) + 1
+
+#ifndef EPHC
+       istat = cudaMemcpy2DAsync( work1_r_d(pos), s1*(decomp%y1dist(m)), src(1,decomp%y1idx(m),1), s1*s2, s1*(decomp%y1dist(m)),s3, stream=a2a_d2h )
+#else
+       jstart = decomp%y1idx(m)
+       jend   = jstart + decomp%y1dist(m) - 1
+       decomp_y1distm = decomp%y1dist(m)
+       !$cuf kernel do(3) <<<*,(8,8,8),stream=a2a_d2h>>>
+       do k=1,s3
+       do j=jstart, jend
+       do i=1,s1
+         idx = i + s1*(j-jstart) + s1*decomp_y1distm*(k-1)
+         if( j .eq. 1 ) then 
+           work1_r_d(pos + idx - 1) = yct(j  ,i,k)
+         else
+           work1_r_d(pos + idx - 1) = yct(j+1,i,k)
+         endif
+       enddo
+       enddo
+       enddo
+#endif
+       istat = cudaEventRecord( a2a_event(iter), a2a_d2h )
+    end do
+
+    ! self
+    m = col_rank
+    pos = decomp%x1disp(m) + 1
+    if( dims(1) .eq. 1 ) then
+      istat = cudaMemcpy2DAsync( dst, s1*s2, src, s1*s2, s1*s2, s3, stream=a2a_comp )
+    else
+#ifndef EPHC
+      !TODO: replace these two copy with a 3D copy or custom kernel for direct src => dst
+      istat = cudaMemcpy2DAsync( work2_r_d(pos), s1*(decomp%y1dist(m)), src(1,decomp%y1idx(m),1), s1*s2, s1*(decomp%y1dist(m)),s3, stream=a2a_comp )
+      istat = cudaMemcpy2DAsync( dst(decomp%x1idx(m),1,1), d1, work2_r_d(pos), decomp%x1dist(m), decomp%x1dist(m), d2*d3, stream=a2a_comp )
+#else
+      istart = decomp%x1idx(m)
+      iend   = istart + decomp%x1dist(m) - 1
+      decomp_x1distm = decomp%x1dist(m)
+
+      jstart = decomp%y1idx(m)
+      jend   = jstart + decomp%y1dist(m) - 1
+      decomp_y1distm = decomp%y1dist(m)
+      !$cuf kernel do(3) <<<*,(8,8,8),stream=a2a_comp>>>
+      do k=1,s3
+      do j=jstart, jend
+      do i=istart, iend
+         if( j .eq. 1 ) then
+           dst(i,(j-jstart+1),k) = yct(j  ,(i-istart+1),k)
+         else
+           dst(i,(j-jstart+1),k) = yct(j+1,(i-istart+1),k)
+         endif
+      enddo
+      enddo
+      enddo
+#endif
+    endif
+
+    do iter=1,dims(1)-1
+      if( pow2 ) then
+        sorc = IEOR(col_rank,iter)
+      else
+        sorc = mod(col_rank - iter + dims(1), dims(1))
+      endif
+      m = sorc
+      call MPI_IRECV( work2_r_d(decomp%x1disp(m)+1), decomp%x1cnts(m), real_type, m, 0, DECOMP_2D_COMM_COL, a2a_requests(iter),ierror)
+    end do
+
+    do iter=1,dims(1)-1
+       if( pow2 ) then
+          dest = IEOR(col_rank,iter)
+          sorc = dest
+       else
+          dest = mod(col_rank + iter, dims(1))
+          sorc = mod(col_rank - iter + dims(1), dims(1))
+       endif
+       m = dest
+       istat = cudaEventSynchronize( a2a_event(iter) )
+       call nvtxStartRangeAsync("MPI",iter)
+       call MPI_SEND( work1_r_d(decomp%y1disp(m)+1), decomp%y1cnts(m), real_type, m, 0, DECOMP_2D_COMM_COL, ierror)
+       call nvtxEndRangeAsync
+       call MPI_WAIT(a2a_requests(iter), MPI_STATUS_IGNORE, ierror)
+       m = sorc
+       pos = decomp%x1disp(m) + 1
+       istat = cudaMemcpy2DAsync( dst(decomp%x1idx(m),1,1), d1, work2_r_d(pos), decomp%x1dist(m), decomp%x1dist(m), d2*d3,stream=a2a_comp )
+    end do
+    istat = cudaEventRecord( a2a_event(0), 0 )
+    istat = cudaEventSynchronize( a2a_event(0) )
+#else
+    ! NOT SUPPORTED YET
+    STOP
+
+    ! rearrange source array as send buffer
+    do m=0,dims(1)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%y1dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%y1dist(m)-1
+       end if
+       pos = decomp%y1disp(m) + 1
+       istat = cudaMemcpy2D( work1_r(pos), s1*(i2-i1+1), src(1,i1,1), s1*s2, s1*(i2-i1+1), s3, cudaMemcpyDeviceToHost )
+    end do
+
+    call MPI_ALLTOALLV(work1_r, decomp%y1cnts, decomp%y1disp, &
+         real_type, work2_r, decomp%x1cnts, decomp%x1disp, &
+         real_type, DECOMP_2D_COMM_COL, ierror)
+
+    ! rearrange receive buffer
+    !call mem_merge_yx_real(work2_r, d1, d2, d3, dst, dims(1), &
+    !     decomp%x1dist, decomp)
+    do m=0,dims(1)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%x1dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%x1dist(m)-1
+       end if
+       pos = decomp%x1disp(m) + 1
+       istat = cudaMemcpy2D( dst(i1,1,1), d1, work2_r(pos), i2-i1+1, i2-i1+1, d2*d3, cudaMemcpyHostToDevice )
+    end do
+#endif
+
+#ifdef USE_NVTX
+    call nvtxEndRange
+#endif
+
+    return
+  end subroutine transpose_yct_to_x
+
   subroutine transpose_y_to_x_real_d(src, dst, opt_decomp)
 
     implicit none
