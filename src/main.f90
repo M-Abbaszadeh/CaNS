@@ -53,6 +53,9 @@ program cans
                              is_outflow,no_outflow,is_forced
   use mod_sanity     , only: test_sanity
   use mod_solver     , only: solver
+#ifdef USE_CUDA
+  use mod_common_mpi, only: mydev
+#endif
 #ifdef USE_NVTX
   use nvtx
 #endif 
@@ -69,8 +72,10 @@ program cans
   attributes(managed):: u,v,w,p,up,vp,wp,pp
 #endif
   !real(8), dimension(imax,jmax,ktot)    :: dudtrko,dvdtrko,dwdtrko
-  real(8), dimension(:,:,:),allocatable    :: dudtrko,dvdtrko,dwdtrko
-  real(8), dimension(:,:,:),allocatable    :: dudtrk,dvdtrk,dwdtrk
+  real(8), dimension(:,:,:),allocatable, target  :: dudtrk_A,dvdtrk_A,dwdtrk_A
+  real(8), dimension(:,:,:),allocatable, target  :: dudtrk_B,dvdtrk_B,dwdtrk_B
+  real(8), dimension(:,:,:), pointer :: dudtrko,dvdtrko,dwdtrko
+  real(8), dimension(:,:,:), pointer :: dudtrk,dvdtrk,dwdtrk, rk_tmp
   real(8), dimension(3) :: tauxo,tauyo,tauzo
   real(8), dimension(3) :: f
   type(C_PTR), dimension(2,2) :: arrplanp
@@ -109,13 +114,13 @@ program cans
   real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer :: irk,istep
   !real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
-  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi
+  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi
 #ifdef USE_CUDA
   integer :: istat
   integer(kind=cuda_count_kind):: freeMem,totMem
   integer(8):: totEle
-  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,dudtrko,dvdtrko,dwdtrko,lambdaxyp,ap,bp,cp,rhsbp
-  attributes(managed):: dudtrk,dvdtrk,dwdtrk
+  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,dudtrk_A,dvdtrk_A,dwdtrk_A,lambdaxyp,ap,bp,cp,rhsbp
+  attributes(managed):: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_B,dvdtrk_B,dwdtrk_B
 #endif
   real(8) :: meanvel
   real(8), dimension(3) :: dpdl
@@ -135,6 +140,13 @@ program cans
 !
 ! Allocate memory.
 !
+  dudtrko => dudtrk_A
+  dvdtrko => dvdtrk_A
+  dwdtrko => dwdtrk_A
+  dudtrk => dudtrk_B
+  dvdtrk => dudtrk_B
+  dwdtrk => dudtrk_B
+
   allocate( u(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate( v(0:imax+1,0:jmax+1,0:ktot+1))
   allocate( w(0:imax+1,0:jmax+1,0:ktot+1)) 
@@ -143,12 +155,44 @@ program cans
   allocate(vp(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate(wp(0:imax+1,0:jmax+1,0:ktot+1)) 
   allocate(pp(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(dudtrko(imax,jmax,ktot))    
-  allocate(dvdtrko(imax,jmax,ktot))   
-  allocate(dwdtrko(imax,jmax,ktot))    
-  allocate(dudtrk(imax,jmax,ktot))    
-  allocate(dvdtrk(imax,jmax,ktot))   
-  allocate(dwdtrk(imax,jmax,ktot))    
+  allocate(dudtrko(imax,jmax,ktot))
+  allocate(dvdtrko(imax,jmax,ktot))
+  allocate(dwdtrko(imax,jmax,ktot))
+  allocate(dudtrk(imax,jmax,ktot))
+  allocate(dvdtrk(imax,jmax,ktot))
+  allocate(dwdtrk(imax,jmax,ktot))
+
+#ifdef USE_CUDA
+  istat = cudaMemAdvise( u, size(u), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( v, size(v), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( w, size(w), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( p, size(p), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( up, size(up), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( vp, size(vp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( wp, size(wp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( pp, size(pp), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dudtrko, size(dudtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dvdtrko, size(dvdtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dwdtrko, size(dwdtrko), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dudtrk, size(dudtrk), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dvdtrk, size(dvdtrk), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( dwdtrk, size(dwdtrk), cudaMemAdviseSetPreferredLocation, mydev )
+
+  istat = cudaMemPrefetchAsync( u, size(u), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( v, size(v), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( w, size(w), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( p, size(p), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( up, size(up), mydev, 0 )
+  istat = cudaMemPrefetchAsync( vp, size(vp), mydev, 0 )
+  istat = cudaMemPrefetchAsync( wp, size(wp), mydev, 0 )
+  istat = cudaMemPrefetchAsync( pp, size(pp), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dudtrko, size(dudtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dvdtrko, size(dvdtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dwdtrko, size(dwdtrko), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dudtrk, size(dudtrk), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dvdtrk, size(dvdtrk), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dwdtrk, size(dwdtrk), mydev, 0 )
+#endif
 
 #ifdef IMPDIFF
   allocate(dudtrkd(imax,jmax,ktot))    
@@ -195,26 +239,37 @@ program cans
 #else
   allocate(lambdaxyp(imax,jmax))
 #endif
-  allocate(ap(ktot)) 
+  allocate(ap(ktot))
   allocate(bp(ktot))
-  allocate(cp(ktot)) 
+  allocate(cp(ktot))
 
-  allocate( dzc(0:ktot+1)) 
+  allocate( dzc(0:ktot+1))
   allocate( dzf(0:ktot+1))
-  allocate ( zc(0:ktot+1)) 
-  allocate(  zf(0:ktot+1)) 
-  allocate(dzci(0:ktot+1)) 
-  allocate(dzfi(0:ktot+1)) 
-  allocate(dzflzi(0:ktot+1)) 
-  allocate(dzclzi(0:ktot+1)) 
+  allocate ( zc(0:ktot+1))
+  allocate(  zf(0:ktot+1))
+  allocate(dzci(0:ktot+1))
+  allocate(dzfi(0:ktot+1))
+  allocate(dzflzi(0:ktot+1))
+  allocate(dzclzi(0:ktot+1))
+  allocate(zclzi(0:ktot+1))
 
 #ifdef USE_CUDA
+  istat = cudaMemAdvise( rhsbp%x, size(rhsbp%x), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( rhsbp%y, size(rhsbp%y), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( rhsbp%z, size(rhsbp%z), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemPrefetchAsync( rhsbp%x, size(rhsbp%x), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( rhsbp%y, size(rhsbp%y), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( rhsbp%z, size(rhsbp%z), cudaCpuDeviceId, 0 )
+
+  istat = cudaMemAdvise( zc, size(zc), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( zf, size(zf), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzc, size(dzc), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzf, size(dzf), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzci, size(dzci), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzfi, size(dzfi), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzclzi, size(dzclzi), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzflzi, size(dzflzi), cudaMemAdviseSetReadMostly, 0 )
+  istat = cudaMemAdvise( zclzi, size(zclzi), cudaMemAdviseSetReadMostly, 0 )
 #endif
 
 !!!!!!!!!
@@ -243,7 +298,26 @@ program cans
       print *," "
   endif
 #endif 
+
+#ifdef USE_NVTX
+  call nvtxStartRange("initgrid", 2)
+#endif
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( zc, size(zc), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( zf, size(zf), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( dzc, size(dzc), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( dzf, size(dzf), cudaCpuDeviceId, 0 )
+#endif
   call initgrid(inivel,n(3),gr,lz,dzc,dzf,zc,zf)
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync(  zc, size( zc), mydev, 0 )
+  istat = cudaMemPrefetchAsync(  zf, size( zf), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzc, size(dzc), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzf, size(dzf), mydev, 0 )
+#endif
+#ifdef USE_NVTX
+  call nvtxEndRange
+#endif
   if(myid.eq.0) then
     inquire (iolength=lenr) dzc(1)
     open(99,file=trim(datadir)//'grid.bin',access='direct',recl=4*n(3)*lenr)
@@ -258,18 +332,48 @@ program cans
   !
   ! test input files before proceeding with the calculation
   !
+#ifdef USE_NVTX
+  call nvtxStartRange("sanity", 3)
+#endif
   call test_sanity(ng,n,dims,cbcvel,cbcpre,bcvel,bcpre,is_outflow,is_forced, &
                    dli,dzci,dzfi)
+#ifdef USE_NVTX
+  call nvtxEndRange
+#endif
   !
-  dzci = dzc**(-1)
-  dzfi = dzf**(-1)
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( dzci, size(dzci), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzfi, size(dzfi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzflzi, size(dzflzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzclzi, size(dzclzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( zclzi, size(zclzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( zc, size(zc), mydev, 0 )
+  !$cuf kernel do(1) <<<*,*>>>
+#endif
+  do k=0,ktot+1
+     dzci(k)=1.d0/dzc(k)
+     dzfi(k)=1.d0/dzf(k)
+     dzflzi(k)=dzf(k)/lz
+     dzclzi(k)=dzc(k)/lz
+     zclzi(k)=zc(k)/lz
+  enddo
+  !@cuf istat=cudaDeviceSynchronize()
+
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( dzci, size(dzci), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( dzfi, size(dzfi), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( dzflzi, size(dzflzi), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( dzclzi, size(dzclzi), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( zclzi, size(zclzi), cudaCpuDeviceId, 0 )
+#endif
+
   if(.not.restart) then
     istep = 0
     time = 0.d0
 #ifdef USE_NVTX
       call nvtxStartRange("initflow", 4)
 #endif
-    call initflow(inivel,n,zc/lz,dzc/lz,dzf/lz,visc,uref,u,v,w,p)
+    call initflow(inivel,n,zclzi,dzclzi,dzflzi,visc,uref,u,v,w,p)
 #ifdef USE_NVTX
       call nvtxEndRange
 #endif
@@ -283,6 +387,12 @@ program cans
     istep = nint(ristep)
     if(myid.eq.0) print*, '*** Checkpoint loaded at time = ', time, 'time step = ', istep, '. ***'
   endif
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( u, size(u), mydev, 0 )
+  istat = cudaMemPrefetchAsync( v, size(v), mydev, 0 )
+  istat = cudaMemPrefetchAsync( w, size(w), mydev, 0 )
+  istat = cudaMemPrefetchAsync( p, size(p), mydev, 0 )
+#endif
   call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
 #ifdef USE_NVTX
@@ -300,6 +410,11 @@ program cans
   ! initialize Poisson solver
   !
   call initsolver(n,dli,dzci,dzfi,cbcpre,bcpre(:,:),lambdaxyp,(/'c','c','c'/),ap,bp,cp,arrplanp,normfftp,rhsbp%x,rhsbp%y,rhsbp%z)
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( rhsbp%x, size(rhsbp%x), mydev, 0 )
+  istat = cudaMemPrefetchAsync( rhsbp%y, size(rhsbp%y), mydev, 0 )
+  istat = cudaMemPrefetchAsync( rhsbp%z, size(rhsbp%z), mydev, 0 )
+#endif
 #ifdef IMPDIFF
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,1),bcvel(:,:,1),lambdaxyu,(/'f','c','c'/),au,bu,cu,arrplanu,normfftu, &
                   rhsbu%x,rhsbu%y,rhsbu%z)
@@ -309,14 +424,6 @@ program cans
                   rhsbw%x,rhsbw%y,rhsbw%z)
 #endif
 
-#ifdef USE_CUDA
-  !$cuf kernel do(1) <<<*,*>>>
-#endif
-  do k=0,ktot+1
-     dzflzi(k)=dzf(k)/lz
-     dzclzi(k)=dzc(k)/lz
-  enddo
-  !@cuf istat=cudaDeviceSynchronize()
   !
   ! main loop
   !
@@ -339,7 +446,7 @@ program cans
     tauzo(:) = 0.d0
     do irk=1,3
       dtrk = sum(rkcoeff(:,irk))*dt
-      dtrki = dtrk**(-1)
+      dtrki = 1.d0/dtrk
 #ifndef IMPDIFF
 
       #ifdef USE_NVTX
@@ -348,6 +455,18 @@ program cans
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
               u,v,w,p,dudtrk,dvdtrk,dwdtrk, &
               dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
+
+      !swap d*dtrk <=> d*dtrko (saves data movement)
+      rk_tmp  => dudtrk
+      dudtrk  => dudtrko
+      dudtrko => rk_tmp
+      rk_tmp  => dvdtrk
+      dvdtrk  => dvdtrko
+      dvdtrko => rk_tmp
+      rk_tmp  => dwdtrk
+      dwdtrk  => dwdtrko
+      dwdtrko => rk_tmp
+
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif

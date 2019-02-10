@@ -12,6 +12,191 @@
 ! This file contains the routines that transpose data from Y to Z pencil
 
 #ifdef USE_CUDA
+  subroutine transpose_yt_to_zp(src, dst, yt, zp, normfft, opt_decomp)
+
+    implicit none
+
+    real(mytype), dimension(:,:,:), intent(INOUT) :: src
+    real(mytype), dimension(:,:,:), intent(INOUT) :: dst
+    real(mytype), dimension(:,:,:), intent(INOUT) :: yt
+    real(mytype), dimension(0:,0:,0:), intent(INOUT) :: zp
+    real(mytype), intent(IN) :: normfft
+
+    TYPE(DECOMP_INFO), intent(IN), optional :: opt_decomp
+    attributes( managed ) :: src, dst
+    attributes( device  ) :: yt
+    attributes( managed ) :: zp
+    TYPE(DECOMP_INFO) :: decomp
+
+    integer :: s1,s2,s3,d1,d2,d3
+    integer :: ierror, istat, m, i1, i2, pos
+    integer :: iter, dest, sorc, pow2
+    integer :: i,j,k,kstart,kend,jstart,jend,decomp_y2distm, idx
+#ifdef USE_NVTX
+    call nvtxStartRange("tranYtZp",1)
+#endif
+    if (present(opt_decomp)) then
+       decomp = opt_decomp
+    else
+       decomp = decomp_main
+    end if
+
+    s1 = SIZE(src,1)
+    s2 = SIZE(src,2)
+    s3 = SIZE(src,3)
+    d1 = SIZE(dst,1)
+    d2 = SIZE(dst,2)
+    d3 = SIZE(dst,3)
+
+#ifdef EPA2A
+
+#ifndef EPHC
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,s3
+    do i=1,s2
+    do j=1,s1
+      src(j,i,k) = yt(i,j,k)
+    enddo
+    enddo
+    enddo
+#endif
+
+    if(IAND(dims(2),dims(2)-1)==0) then
+      pow2 = 1
+    else
+      pow2 = 0
+    endif
+
+    ! rearrange source array as send buffer
+    do iter=1,dims(2)-1
+       if( pow2 ) then
+         dest = IEOR(row_rank,iter)
+       else
+         dest = mod(row_rank + iter, dims(2))
+       endif
+       m = dest
+       pos = decomp%y2disp(m) + 1
+#ifndef EPHC
+       istat = cudaMemcpy2DAsync( work1_r_d(pos), s1*(decomp%y2dist(m)), src(1,decomp%y2idx(m),1), s1*s2, s1*(decomp%y2dist(m)), s3, stream=a2a_d2h )
+#else
+       jstart = decomp%y2idx(m)
+       jend   = jstart + decomp%y2dist(m) - 1
+       decomp_y2distm = decomp%y2dist(m)
+       !$cuf kernel do(3) <<<*,*,stream=a2a_d2h>>>
+       do k=1,s3
+       do j=jstart, jend
+       do i=1,s1
+         idx = i + s1*(j-jstart) + s1*decomp_y2distm*(k-1)
+         work1_r_d(pos + idx - 1) = yt( j, i, k ) 
+       enddo
+       enddo
+       enddo
+#endif
+       istat = cudaEventRecord( a2a_event(iter), a2a_d2h )
+    end do
+
+    ! self
+    m = row_rank
+#ifndef EPHC
+    istat = cudaMemcpy2DAsync( dst(1,1,decomp%z2idx(m)), s1*(decomp%y2dist(m)), src(1,decomp%y2idx(m),1), s1*s2, s1*(decomp%y2dist(m)), s3, stream=a2a_comp )
+#else
+    kstart = decomp%z2idx(m)
+    jstart = decomp%y2idx(m)
+    !$cuf kernel do(3) <<<*,(8,8,8),stream=a2a_comp>>>
+    do k=1,s3
+    do j=1,d2
+    do i=1,s1
+      zp(i,j,k+kstart-1) = yt(j+jstart-1,i,k)*normfft
+    enddo
+    enddo
+    enddo
+#endif
+
+    do iter=1,dims(2)-1
+      if( pow2 ) then
+        sorc = IEOR(row_rank,iter)
+      else
+        sorc = mod(row_rank - iter + dims(2), dims(2))
+      endif
+      m = sorc
+      call MPI_IRECV( work2_r_d(decomp%z2disp(m)+1), decomp%z2cnts(m), real_type, m, 0, DECOMP_2D_COMM_ROW, a2a_requests(iter), ierror)
+    end do
+
+    do iter=1,dims(2)-1
+       if( pow2 ) then
+          dest = IEOR(row_rank,iter)
+          sorc = dest
+       else
+          dest = mod(row_rank + iter, dims(2))
+          sorc = mod(row_rank - iter + dims(2), dims(2))
+       endif
+       m = dest
+       istat = cudaEventSynchronize( a2a_event(iter) )
+       call nvtxStartRangeAsync("MPI",iter)
+       call MPI_SEND( work1_r_d(decomp%y2disp(m)+1), decomp%y2cnts(m), real_type, m, 0, DECOMP_2D_COMM_ROW, ierror)
+       call nvtxEndRangeAsync
+       call MPI_WAIT(a2a_requests(iter), MPI_STATUS_IGNORE, ierror)
+       m = sorc
+       pos = decomp%z2disp(m) + 1
+#ifndef EPHC
+       istat = cudaMemcpyAsync( dst(1,1,decomp%z2idx(m)), work2_r_d(pos), decomp%z2cnts(m), a2a_h2d )
+#else
+       kstart = decomp%z2idx(m)
+       kend = kstart + decomp%z2dist(m) - 1
+
+       !$cuf kernel do(3) <<<*,*,stream=a2a_h2d>>>
+       do k=kstart, kend
+       do j=1,d2
+       do i=1,d1
+         idx = i + d1*(j-1) + d1*d2*(k-1)
+         zp( i, j, k ) = work2_r_d( idx )*normfft
+       enddo
+       enddo
+       enddo
+#endif
+    end do
+
+#ifndef EPHC
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,d3
+    do j=1,d2
+    do i=1,d1
+      zp(i,j,k) = dst(i,j,k)*normfft
+    enddo
+    enddo
+    enddo
+#endif
+
+    istat = cudaEventRecord( a2a_event(0), 0 )
+    istat = cudaEventSynchronize( a2a_event(0) )
+#else
+    ! rearrange source array as send buffer
+    do m=0,dims(2)-1
+       if (m==0) then
+          i1 = 1
+          i2 = decomp%y2dist(0)
+       else
+          i1 = i2+1
+          i2 = i1+decomp%y2dist(m)-1
+       end if
+       pos = decomp%y2disp(m) + 1
+       istat = cudaMemcpy2D( work1_r(pos), s1*(i2-i1+1), src(1,i1,1), s1*s2, s1*(i2-i1+1), s3, cudaMemcpyDeviceToHost )
+    end do
+
+    call MPI_ALLTOALLV(work1_r, decomp%y2cnts, decomp%y2disp, &
+         real_type, work2_r, decomp%z2cnts, decomp%z2disp, &
+         real_type, DECOMP_2D_COMM_ROW, ierror)
+
+    istat = cudaMemcpy( dst, work2_r, d1*d2*d3, cudaMemcpyHostToDevice )
+#endif
+
+#ifdef USE_NVTX
+    call nvtxEndRange
+#endif
+
+    return
+  end subroutine transpose_yt_to_zp
+
   subroutine transpose_y_to_z_real_d(src, dst, opt_decomp)
 
     implicit none

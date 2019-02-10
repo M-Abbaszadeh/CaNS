@@ -14,7 +14,11 @@ module mod_solver
   real(8), allocatable, dimension(:,:,:) :: pw
   attributes(managed) :: px,py,pz,pw
   real(8), allocatable, dimension(:,:,:), device :: py_t
-  complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc, pyc_t
+#ifdef EPHC
+  real(8), allocatable, dimension(:,:,:), device :: pxc, pyc_t
+#else
+  complex(8), allocatable, dimension(:,:,:), device :: pxc, pyc_t
+#endif
 #endif
   private
   public solver
@@ -54,8 +58,13 @@ module mod_solver
     if ( .not. allocated(pz) ) allocate(pz(ng(1)/dims(1),ng(2)/dims(2),ng(3)))
 #ifdef USE_CUDA
     if ( .not. allocated(pw) ) allocate(pw(ng(1)/dims(2),ng(2)/dims(1),ng(3)))
+#ifdef EPHC
+    if ( .not. allocated(pxc  )) allocate( pxc( 2*(ng(1)/2 + 1), ng(2)/dims(1), ng(3)/dims(2) ) )
+    if ( .not. allocated(pyc_t)) allocate( pyc_t( 2*(ng(2)/2 + 1), ng(1)/dims(1), ng(3)/dims(2) ) )
+#else
     if ( .not. allocated(pxc  )) allocate( pxc( ng(1)/2 + 1, ng(2)/dims(1), ng(3)/dims(2) ) )
     if ( .not. allocated(pyc_t)) allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
+#endif
     if ( .not. allocated(py_t )) then
       allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
       istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, mydev )
@@ -66,13 +75,215 @@ module mod_solver
       istat = cudaMemPrefetchAsync( py, size(py), mydev, 0)
       istat = cudaMemPrefetchAsync( pz, size(pz), mydev, 0)
       istat = cudaMemPrefetchAsync( pw, size(pw), mydev, 0)
+      istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), mydev, 0)
+      istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),mydev,0)
+      istat = cudaMemPrefetchAsync( a, size(a), mydev, 0)
+      istat = cudaMemPrefetchAsync( b, size(b), mydev, 0)
+      istat = cudaMemPrefetchAsync( c, size(c), mydev, 0)
     endif
-    istat = cudaMemPrefetchAsync( pz_pad, size(pz_pad), mydev, 0)
-    istat = cudaMemPrefetchAsync(lambdaxy,size(lambdaxy),mydev,0)
-    istat = cudaMemPrefetchAsync( a, size(a), mydev, 0)
-    istat = cudaMemPrefetchAsync( b, size(b), mydev, 0)
-    istat = cudaMemPrefetchAsync( c, size(c), mydev, 0)
+#endif
 
+#ifdef EPHC
+    if(dims(1) * dims(2) .eq. 1) then
+
+#define Y_B4_X
+#ifdef Y_B4_X
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(1)/dims(1)
+    do i=1,ng(2)
+      py_t(i,j,k) = pz_pad(j,i,k)
+    enddo
+    enddo
+    enddo
+
+    istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
+
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do i=1,ng(2)
+      do j=1,ng(1)/dims(1)
+        if( i .eq. 1 ) then
+          px(j,i,k) = pyc_t(i,j,k)
+        else
+          px(j,i,k) = pyc_t(i+1,j,k)
+        endif
+      end do
+    end do
+    end do
+    !
+    !call transpose_y_to_x(py,px)
+    !
+    istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
+
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        if( i .eq. 1)  then
+          pw(i,j,k) = pxc(i,j,k)
+        else
+          pw(i,j,k) = pxc(i+1,j,k)
+        endif
+      end do
+    end do
+    end do
+    !
+    !call transpose_x_to_z(px,pw)
+    !
+    q = 0
+    if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
+    if(bcz(0)//bcz(1).eq.'PP') then
+      call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
+    else
+      call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
+    endif
+    !
+    !call transpose_z_to_x(pw,px)
+    !
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        if( i .eq. 1)  then
+          pxc(i,j,k) = pw(i,j,k)
+        else
+          pxc(i+1,j,k) = pw(i,j,k)
+        endif
+      end do
+    end do
+    end do
+
+    istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
+    !
+    !call transpose_x_to_y(px,py)
+    !
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(1)/dims(1)
+      do i=1,ng(2)
+        if( i .eq. 1 ) then
+          pyc_t(i,j,k) = px(j,i,k)
+        else
+          pyc_t(i+1,j,k) = px(j,i,k)
+        endif
+      end do
+    end do
+    end do
+
+    istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
+    !
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)
+    do j=1,ng(2)/dims(2)
+    do i=1,ng(1)/dims(1)
+      pz_pad(i,j,k) = py_t(j,i,k)*normfft
+    enddo
+    enddo
+    enddo
+#else
+    ! X first then Y (not as fast as Y first)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+    do i=1,ng(1)
+      px(i,j,k) = pz_pad(i,j,k)
+    enddo
+    enddo
+    enddo
+
+    istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
+
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(1)/dims(1)
+    do i=1,ng(2)
+      if(j .eq. 1) then
+        py_t(i,j,k) = pxc(j,i,k)
+      else
+        py_t(i,j,k) = pxc(j+1,i,k)
+      endif
+    enddo
+    enddo
+    enddo
+
+    istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
+
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do i=1,ng(2)
+      do j=1,ng(1)/dims(1)
+        if( i .eq. 1 ) then
+          pw(j,i,k) = pyc_t(i,j,k)
+        else
+          pw(j,i,k) = pyc_t(i+1,j,k)
+        endif
+      end do
+    end do
+    end do
+    !
+    q = 0
+    if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
+    if(bcz(0)//bcz(1).eq.'PP') then
+      call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
+    else
+      call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
+    endif
+    !
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(1)/dims(1)
+      do i=1,ng(2)
+        if( i .eq. 1 ) then
+          pyc_t(i,j,k) = pw(j,i,k)
+        else
+          pyc_t(i+1,j,k) = pw(j,i,k)
+        endif
+      end do
+    end do
+    end do
+
+    istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
+
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        if( i .eq. 1)  then
+          pxc(i,j,k) = py_t(j,i,k)
+        else
+          pxc(i+1,j,k) = py_t(j,i,k)
+        endif
+      end do
+    end do
+    end do
+
+    istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
+
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=lbound(pz,3),ubound(pz,3)
+    do j=lbound(pz,2),ubound(pz,2)
+    do i=lbound(pz,1),ubound(pz,1)
+      pz_pad(i,j,k) = px(i,j,k)*normfft
+    enddo
+    enddo
+    enddo
+
+#endif
+
+    else ! if single rank
+
+#endif
+
+#ifndef EPHC
+#ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
     do k=1,ng(3)
@@ -84,8 +295,12 @@ module mod_solver
     enddo
     !
     call transpose_z_to_y(pz,py)
+#else
+    call transpose_zp_to_yt( pz, py, pz_pad, py_t )
+#endif
     !
 #ifdef USE_CUDA
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
     do j=1,ng(1)/dims(1)
@@ -94,9 +309,27 @@ module mod_solver
     enddo
     enddo
     enddo
+#endif
 
     istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
 
+#ifdef EPHC
+#ifndef EPHC
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+    do k=1,ng(3)/dims(2)
+    do i=1,ng(2)
+      do j=1,ng(1)/dims(1)
+        if( i .eq. 1 ) then
+          py(j,i,k) = pyc_t(i,j,k)
+        else
+          py(j,i,k) = pyc_t(i+1,j,k)
+        endif
+      end do
+    end do
+    end do
+#endif
+#else
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -110,15 +343,38 @@ module mod_solver
       end do
     end do
     end do
+#endif
+
 #else
     call fftd(arrplan(1,2),py) ! fwd transform in y
 #endif
     !
+#ifdef EPHC
+    call transpose_yct_to_x(py,px,pyc_t)
+#else
     call transpose_y_to_x(py,px)
+#endif
     !
 #ifdef USE_CUDA
     istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
 
+#ifdef EPHC
+#ifndef EPHC
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        if( i .eq. 1)  then
+          px(i,j,k) = pxc(i,j,k)
+        else
+          px(i,j,k) = pxc(i+1,j,k)
+        endif
+      end do
+    end do
+    end do
+#endif
+#else
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -132,12 +388,18 @@ module mod_solver
       end do
     end do
     end do
+#endif
+
 #else
     call fftd(arrplan(1,1),px) ! fwd transform in x
 #endif
     !
 #ifdef USE_CUDA
+#ifdef EPHC
+    call transpose_xc_to_z(px,pw,pxc)
+#else
     call transpose_x_to_z(px,pw)
+#endif
 #else
     call transpose_x_to_y(px,py)
     call transpose_y_to_z(py,pz)
@@ -160,13 +422,35 @@ module mod_solver
     endif
     !
 #ifdef USE_CUDA
+#ifdef EPHC
+    call transpose_z_to_xc(pw,px,pxc)
+#else
     call transpose_z_to_x(pw,px)
+#endif
 #else
     call transpose_z_to_y(pz,py)
     call transpose_y_to_x(py,px)
 #endif
     !
 #ifdef USE_CUDA
+
+#ifdef EPHC
+#ifndef EPHC
+    ng1 = ng(1)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(2)/dims(1)
+      do i=1,ng(1)
+        if( i .eq. 1)  then
+          pxc(i,j,k) = px(i,j,k)
+        else
+          pxc(i+1,j,k) = px(i,j,k)
+        endif
+      end do
+    end do
+    end do
+#endif
+#else
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -185,16 +469,41 @@ module mod_solver
     end do
     end do
     end do
-
+#endif
     istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
+
 #else
     call ffti(arrplan(2,1),px) ! bwd transform in x
 #endif
     !
+#ifdef EPHC
+    call transpose_x_to_yct(px,py,pyc_t)
+#else
     call transpose_x_to_y(px,py)
+#endif
     !
 #ifdef USE_CUDA
-    pyc_t = (0.d0,0.d0)
+
+#ifdef EPHC
+#ifndef EPHC
+    !pyc_t = 0.d0
+
+    ng2 = ng(2)
+    !$cuf kernel do(3) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+    do j=1,ng(1)/dims(1)
+      do i=1,ng(2)
+        if( i .eq. 1 ) then
+          pyc_t(i,j,k) = py(j,i,k)
+        else
+          pyc_t(i+1,j,k) = py(j,i,k)
+        endif
+      end do
+    end do
+    end do
+#endif
+#else
+    !pyc_t = (0.d0,0.d0)
 
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,*>>>
@@ -214,23 +523,30 @@ module mod_solver
     end do
     end do
     end do
-
+#endif
     istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
 
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
-    do j=1,ng(1)/dims(1)
     do i=1,ng(2)
+    do j=1,ng(1)/dims(1)
       py(j,i,k) = py_t(i,j,k)
     enddo
     enddo
     enddo
+#endif
 #else
     call ffti(arrplan(2,2),py) ! bwd transform in y
 #endif
     !
+#ifdef EPHC
+    call transpose_yt_to_zp( py, pz, py_t, pz_pad, normfft )
+#else
     call transpose_y_to_z(py,pz)
+#endif
     !
+#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -241,6 +557,11 @@ module mod_solver
     enddo
     enddo
     enddo
+#endif
+
+#ifdef EPHC
+    endif
+#endif
 
     !deallocate(px,py,pz,pw)
 #ifdef USE_CUDA

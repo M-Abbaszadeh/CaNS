@@ -196,6 +196,11 @@ module decomp_2d
        transpose_x_to_y, transpose_y_to_z, &
        transpose_z_to_y, transpose_y_to_x, &
        transpose_z_to_x, transpose_x_to_z, &
+#ifdef USE_CUDA
+       transpose_zp_to_yt, transpose_yct_to_x, &
+       transpose_xc_to_z, transpose_z_to_xc, &
+       transpose_x_to_yct, transpose_yt_to_zp, &
+#endif
 #ifdef OCC
        transpose_x_to_y_start, transpose_y_to_z_start, &
        transpose_z_to_y_start, transpose_y_to_x_start, &
@@ -229,7 +234,6 @@ module decomp_2d
   !      global size is not the default nx*ny*nz 
   !       * as the case in fft r2c/c2r interface 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
   interface transpose_x_to_y
 #ifdef USE_CUDA
      module procedure transpose_x_to_y_real_d

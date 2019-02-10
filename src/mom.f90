@@ -4,8 +4,253 @@ module mod_mom
   use mod_common_mpi, only: ierr
   implicit none
   private
-  public momxad,momyad,momzad,momxp,momyp,momzp,momp
+  public momxad,momyad,momzad,momxp,momyp,momzp,momp,momxyzad
   contains
+  subroutine momxyzad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dudt,dvdt,dwdt,taux,tauy,tauz)
+    !@cuf use cudafor
+    implicit none
+    integer, intent(in) :: nx,ny,nz
+    real(8), intent(in) :: dxi,dyi,dzi,visc
+    real(8), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
+    real(8), dimension(0:,0:,0:), intent(in) :: u,v,w
+    real(8), dimension(:,:,:), intent(out) :: dudt,dvdt,dwdt
+    real(8), dimension(3)  , intent(out) :: taux,tauy,tauz
+    integer :: im,ip,jm,jp,km,kp,i,j,k
+    real(8) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+    real(8) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    real(8) :: taux2d,taux3d
+    real(8) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
+    real(8) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(8) :: tauy1d,tauy3d
+    real(8) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(8) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    real(8) :: tauz1d,tauz2d,dudt_temp,dvdt_temp,dwdt_temp
+#ifdef USE_CUDA
+    attributes(managed):: u,v,w,dudt,dvdt,dwdt,dzci,dzfi,dzflzi
+    integer:: istat
+#endif
+    integer :: nxg,nyg,nzg
+    !
+
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,(8,8,8)>>>
+#else
+    !$OMP PARALLEL DO DEFAULT(none) &
+    !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
+    !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
+    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
+#endif
+    do k=1,nz
+      kp = k + 1
+      km = k - 1
+      do j=1,ny
+        jp = j + 1
+        jm = j - 1
+        do i=1,nx
+          ip = i + 1
+          im = i - 1
+          ! touch u
+          dudxp = (u(ip,j,k)-u(i,j,k))*dxi
+          dudxm = (u(i,j,k)-u(im,j,k))*dxi
+          dudyp = (u(i,jp,k)-u(i,j,k))*dyi
+          dudym = (u(i,j,k)-u(i,jm,k))*dyi
+          dudzp = (u(i,j,kp)-u(i,j,k))*dzci(k)
+          dudzm = (u(i,j,k)-u(i,j,km))*dzci(km)
+          uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
+          uuim  = 0.25d0*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
+
+          dudt_temp = dxi*(     -uuip + uuim ) + (dudxp-dudxm)*visc*dxi + &
+                                               + (dudyp-dudym)*visc*dyi + &
+                                               + (dudzp-dudzm)*visc*dzfi(k)
+
+
+          uvjp  = 0.25d0*( u(i,jp,k)+u(i,j,k) ) !*( v(ip,j ,k )+v(i,j ,k ) )
+          uvjm  = 0.25d0*( u(i,jm,k)+u(i,j,k) ) !*( v(ip,jm,k )+v(i,jm,k ) )
+          uwkp  = 0.25d0*( u(i,j,kp)+u(i,j,k) ) !*( w(ip,j ,k )+w(i,j ,k ) )
+          uwkm  = 0.25d0*( u(i,j,km)+u(i,j,k) ) !*( w(ip,j ,km)+w(i,j ,km) )
+          uvip  = 0.25d0*( u(i ,j,k)+u(i ,jp,k) ) !*( v(i,j,k )+v(ip,j ,k) )
+          uvim  = 0.25d0*( u(im,j,k)+u(im,jp,k) ) !*( v(i,j,k )+v(im,j ,k) )
+          uwip  = 0.25d0*( u(i ,j ,k)+u(i ,j ,kp) ) !*( w(i,j,k)+w(ip,j,k) )
+          uwim  = 0.25d0*( u(im,j ,k)+u(im,j ,kp) ) !*( w(i,j,k)+w(im,j,k) )
+
+          ! touch v
+          vvjp  = 0.25d0*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
+          vvjm  = 0.25d0*( v(i,j,k )+v(i,jm,k)  )*( v(i,j,k )+v(i ,jm,k) )
+          dvdxp = (v(ip,j,k)-v(i,j,k))*dxi
+          dvdxm = (v(i,j,k)-v(im,j,k))*dxi
+          dvdyp = (v(i,jp,k)-v(i,j,k))*dyi
+          dvdym = (v(i,j,k)-v(i,jm,k))*dyi
+          dvdzp = (v(i,j,kp)-v(i,j,k))*dzci(k)
+          dvdzm = (v(i,j,k)-v(i,j,km))*dzci(km)
+          uvip  = uvip*( v(i,j,k )+v(ip,j ,k) )
+          uvim  = uvim*( v(i,j,k )+v(im,j ,k) )
+
+
+          dvdt_temp =   dxi*(     -uvip + uvim ) + (dvdxp-dvdxm)*visc*dxi+ &
+                        dyi*(     -vvjp + vvjm ) + (dvdyp-dvdym)*visc*dyi+ &
+                                                   (dvdzp-dvdzm)*visc*dzfi(k)
+
+          uvjp  = uvjp*( v(ip,j ,k )+v(i,j ,k ) )
+          uvjm  = uvjm*( v(ip,jm,k )+v(i,jm,k ) )
+          dudt_temp = dudt_temp + dyi*(     -uvjp + uvjm )
+
+          wvkp  = 0.25d0*( v(i ,j ,kp)+v(i ,j ,k ) ) !*( w(i,j,k )+w(i,jp,k ) )
+          wvkm  = 0.25d0*( v(i ,j ,km)+v(i ,j ,k ) ) !*( w(i,j,km)+w(i,jp,km) )
+          vwjp  = 0.25d0*( v(i ,j ,k )+v(i ,j ,kp) ) !*( w(i,j,k )+w(i,jp,k ) )
+          vwjm  = 0.25d0*( v(i ,jm,k )+v(i ,jm,kp) ) !*( w(i,j,k )+w(i,jm,k ) )
+
+          !touch w
+          wwkp  = 0.25d0*( w(i,j,k)+w(i,j,kp) )*( w(i ,j ,k)+w(i ,j ,kp) )
+          wwkm  = 0.25d0*( w(i,j,k)+w(i,j,km) )*( w(i ,j ,k)+w(i ,j ,km) )
+          dwdxp = (w(ip,j,k)-w(i,j,k))*dxi
+          dwdxm = (w(i,j,k)-w(im,j,k))*dxi
+          dwdyp = (w(i,jp,k)-w(i,j,k))*dyi
+          dwdym = (w(i,j,k)-w(i,jm,k))*dyi
+          dwdzp = (w(i,j,kp)-w(i,j,k))*dzfi(kp)
+          dwdzm = (w(i,j,k)-w(i,j,km))*dzfi(k)
+          uwip  = uwip*( w(i,j,k)+w(ip,j,k) )
+          uwim  = uwim*( w(i,j,k)+w(im,j,k) )
+          vwjp  = vwjp*( w(i,j,k )+w(i,jp,k ) )
+          vwjm  = vwjm*( w(i,j,k )+w(i,jm,k ) )
+
+
+          dwdt_temp =   dxi*(     -uwip + uwim ) + (dwdxp-dwdxm)*visc*dxi+ &
+                        dyi*(     -vwjp + vwjm ) + (dwdyp-dwdym)*visc*dyi+ &
+                        dzci(k)*( -wwkp + wwkm ) + (dwdzp-dwdzm)*visc*dzci(k)
+
+          uwkp  = uwkp*( w(ip,j ,k )+w(i,j ,k ) )
+          uwkm  = uwkm*( w(ip,j ,km)+w(i,j ,km) )
+          dudt_temp = dudt_temp + dzfi(k)*( -uwkp + uwkm )
+
+          wvkp  = wvkp*( w(i,j,k )+w(i,jp,k ) )
+          wvkm  = wvkm*( w(i,j,km)+w(i,jp,km) )
+          dvdt_temp = dvdt_temp + dzfi(k)*( -wvkp + wvkm )
+
+          !
+          ! Momentum balance
+          !
+          dudt(i,j,k) = dudt_temp
+          dvdt(i,j,k) = dvdt_temp
+          dwdt(i,j,k) = dwdt_temp
+
+        enddo
+      enddo
+    enddo
+#ifndef USE_CUDA
+    !$OMP END PARALLEL DO
+#endif
+    !@cuf istat=cudaDeviceSynchronize()
+    taux(:) = 0.
+     taux2d=0.d0
+     taux3d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do k=1,nz
+      do i=1,nx
+        dudyp = (u(i,1 ,k)-u(i,0   ,k))*dyi*visc*dzflzi(k)
+        dudym = (u(i,ny,k)-u(i,ny+1,k))*dyi*visc*dzflzi(k)
+        taux2d = taux2d + (dudyp+dudym)
+      enddo
+    enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    taux(2)=taux2d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do j=1,ny
+      do i=1,nx
+        dudzp = (u(i,j,1 )-u(i,j,0   ))*dzci(0)*visc
+        dudzm = (u(i,j,nz)-u(i,j,nz+1))*dzci(nz)*visc
+        taux3d = taux3d + (dudzp+dudzm)
+      enddo
+    enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    taux(3)=taux3d
+
+    call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    nxg = nx*dims(1)
+    nyg = ny*dims(2)
+    nzg = nz
+    taux(1) = taux(1)/(1.d0*nyg)
+    taux(2) = taux(2)/(1.d0*nxg)
+    taux(3) = taux(3)/(1.d0*nxg*nyg)
+
+     tauy(:) = 0.
+     tauy1d=0.d0
+     tauy3d=0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do k=1,nz
+      do j=1,ny
+        dvdxp = (v(1 ,j,k)-v(0   ,j,k))*dxi*visc*dzflzi(k)
+        dvdxm = (v(nx,j,k)-v(nx+1,j,k))*dxi*visc*dzflzi(k)
+        tauy1d = tauy1d + (dvdxp+dvdxm)
+      enddo
+    enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    tauy(1)=tauy1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do j=1,ny
+      do i=1,nx
+        dvdzp = (v(i,j,1 )-v(i,j,0   ))*dzci(0)*visc
+        dvdzm = (v(i,j,nz)-v(i,j,nz+1))*dzci(nz)*visc
+        tauy3d = tauy3d + (dvdzp+dvdzm)
+      enddo
+    enddo
+    !@cuf istat=cudaDeviceSynchronize()
+    tauy(3)=tauy3d
+    call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    nxg = nx*dims(1)
+    nyg = ny*dims(2)
+    nzg = nz
+    tauy(1) = tauy(1)/(1.d0*nyg)
+    tauy(2) = tauy(2)/(1.d0*nxg)
+    tauy(3) = tauy(3)/(1.d0*nxg*nyg)
+
+    tauz(:) = 0.
+    tauz1d = 0.d0
+    tauz2d = 0.d0
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do k=1,nz
+      do j=1,ny
+        dwdxp = (w(1 ,j,k)-w(0   ,j,k))*dxi*visc*dzflzi(k)
+        dwdxm = (w(nx,j,k)-w(nx+1,j,k))*dxi*visc*dzflzi(k)
+        tauz1d = tauz1d + (dwdxp+dwdxm)
+      enddo
+    enddo
+!@cuf istat=cudaDeviceSynchronize()
+    tauz(1)=tauz1d
+#ifdef USE_CUDA
+    !$cuf kernel do(2) <<<*,*>>>
+#endif
+    do k=1,nz
+      do i=1,nx
+        dwdyp = (w(i,1,k )-w(i,0   ,k))*dyi*visc*dzflzi(k)
+        dwdym = (w(i,ny,k)-w(i,ny+1,k))*dyi*visc*dzflzi(k)
+        tauz2d = tauz2d + (dwdyp+dwdym)
+      enddo
+    enddo
+!@cuf istat=cudaDeviceSynchronize()
+    tauz(2)=tauz2d
+    call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    nxg = nx*dims(1)
+    nyg = ny*dims(2)
+    nzg = nz
+    tauz(1) = tauz(1)/(1.d0*nyg)
+    tauz(2) = tauz(2)/(1.d0*nxg)
+    tauz(3) = tauz(3)/(1.d0*nxg*nyg)
+
+
+    return
+  end subroutine momxyzad
+
   subroutine momxad(nx,ny,nz,dxi,dyi,dzi,dzci,dzfi,dzflzi,visc,u,v,w,dudt,taux)
     !@cuf use cudafor
     implicit none

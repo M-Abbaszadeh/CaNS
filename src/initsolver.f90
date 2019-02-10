@@ -35,6 +35,12 @@ module mod_initsolver
     integer :: i,j
     real(8), dimension(n(1)*dims(1))      :: lambdax
     real(8), dimension(n(2)*dims(2))      :: lambday
+#ifdef USE_CUDA
+#ifdef EPHC
+    real(8), dimension(n(1)*dims(1)+2)      :: lambdax_temp
+    real(8), dimension(n(2)*dims(2)+2)      :: lambday_temp
+#endif
+#endif
     integer, dimension(3) :: ng
     integer :: ii,jj
     !
@@ -50,6 +56,43 @@ module mod_initsolver
     ! add eigenvalues
     !
 #ifdef USE_CUDA
+
+#ifdef EPHC
+    !un-scramble lambday
+    do i=1,ng(2)+2
+      lambday_temp(i) = 0.d0
+    enddo
+    do i=1,ng(2)
+      if( i .le. (ng(2)/2)+1 )  then
+        lambday_temp( 2*i - 1 ) = lambday( i )
+      else
+        lambday_temp( 2*( i - ( ng(2)/2 ) ) ) = lambday( ng(2) - (i - (ng(2)/2 + 2)) )
+      endif
+    enddo
+    !new format: shift to hide first imaginary element
+    lambday(1) = lambday_temp(1)
+    do i=2,ng(2)
+      lambday(i) = lambday_temp(i+1)
+    enddo
+
+    !un-scramble lambdax
+    do i=1,ng(1)+2
+      lambdax_temp(i) = 0.d0
+    enddo
+    do i=1,ng(1)
+      if( i .le. (ng(1)/2)+1 )  then
+        lambdax_temp( 2*i - 1 ) = lambdax( i )
+      else
+        lambdax_temp( 2*( i - ( ng(1)/2 ) ) ) = lambdax( ng(1) - (i - (ng(1)/2 + 2)) )
+      endif
+    enddo
+    !new format: shift to hide first imaginary element
+    lambdax(1) = lambdax_temp(1)
+    do i=2,ng(1)
+      lambdax(i) = lambdax_temp(i+1)
+    enddo
+#endif
+
     !use new z pencils
     nt(1) = ng(1)/dims(2)
     nt(2) = ng(2)/dims(1)
