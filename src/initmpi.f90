@@ -2,7 +2,7 @@ module mod_initmpi
   !@cuf use cudafor
   use mpi
   use decomp_2d
-  use mod_param     , only: dims
+  use mod_param     , only: dims, imax, jmax, itot, jtot
   use mod_common_mpi, only: myid,coord,comm_cart,left,right,front,back,xhalo,yhalo,ierr,mydev
   use mod_common_mpi, only: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
   implicit none
@@ -38,7 +38,17 @@ module mod_initmpi
     if( bc(0,1)//bc(1,1).eq.'PP' ) periods(1) = .true.
     if( bc(0,2)//bc(1,2).eq.'PP' ) periods(2) = .true.
     if( bc(0,3)//bc(1,3).eq.'PP' ) periods(3) = .true.
+
+    ! Set dims to 0 to enable autotuning
+    dims(1) = 0
+    dims(2) = 0
+
     call decomp_2d_init(n(1),n(2),n(3),dims(1),dims(2),periods)
+
+    ! Set imax and jmax using autotuned processor grid dimensions
+    imax = itot/dims(1)
+    jmax = jtot/dims(2)
+
     myid = nrank
     comm_cart = DECOMP_2D_COMM_CART_Z
     coord(1) = (zstart(1)-1)*dims(1)/n(1)

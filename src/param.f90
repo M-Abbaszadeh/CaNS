@@ -25,4 +25,10 @@ public
                                                               25.d0/60.d0, -17.d0/60.d0, &
                                                               45.d0/60.d0, -25.d0/60.d0/), shape(rkcoeff))
    real(8), parameter, dimension(3)   :: rkcoeff12 = rkcoeff(1,:)+rkcoeff(2,:)
+
+   ! grid of computational subdomains
+   integer, dimension(2) :: dims
+   ! x and y sizes of local arrays in the basic 2D z-pencil decomposition
+   integer :: imax, jmax
+
 end module mod_param

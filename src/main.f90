@@ -61,8 +61,9 @@ program cans
 #endif 
   !$ use omp_lib
   implicit none
+  integer, dimension(3) :: n
+  !integer, parameter, dimension(3) :: n  = (/imax,jmax,ktot/)
   integer, parameter, dimension(3) :: ng = (/itot,jtot,ktot/)
-  integer, parameter, dimension(3) :: n  = (/imax,jmax,ktot/)
   real(8), parameter, dimension(3) :: l   = (/lx,ly,lz/)
   real(8), parameter, dimension(3) :: dl  = (/dx,dy,dz/)
   real(8), parameter, dimension(3) :: dli = (/dxi,dyi,dzi/)
@@ -136,6 +137,9 @@ program cans
   !
   !$call omp_set_num_threads(nthreadsmax)
   call initmpi(ng,cbcpre)
+
+  ! imax and jmax set in initmpi now. Set n array here.
+  n  = (/imax,jmax,ktot/)
 
 !
 ! Allocate memory.

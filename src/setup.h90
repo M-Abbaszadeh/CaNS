@@ -43,11 +43,12 @@
    !
    integer, parameter :: icheck =   10, iout0d =    10, iout1d =   10, &
                          iout2d = 5000, iout3d = 10000, isave  = 2000
-   !
+
+   ! NOTE: grid dimensions now set dynamically, rather than at compile time.
    ! grid of computational subdomains
-   integer, parameter, dimension(2) :: dims = (/1,1/)
+   !integer, parameter, dimension(2) :: dims = (/2,2/)
    ! x and y sizes of local arrays in the basic 2D z-pencil decomposition
-   integer, parameter :: imax = itot/dims(1), jmax = jtot/dims(2)
+   !integer, parameter :: imax = itot/dims(1), jmax = jtot/dims(2)
    !
    ! number of OpenMP threads
    integer, parameter :: nthreadsmax = 4

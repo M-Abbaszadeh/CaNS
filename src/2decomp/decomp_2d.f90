@@ -371,6 +371,7 @@ contains
   !     nx, ny, nz   - global data dimension
   !     p_row, p_col - 2D processor grid
   !   OUTPUT:
+  !     p_row, p_col - best 2D processor grid if using autotuning
   !     all internal data structures initialised properly
   !     library ready to use
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -378,7 +379,8 @@ contains
 
     implicit none
 
-    integer, intent(IN) :: nx,ny,nz,p_row,p_col
+    integer, intent(IN) :: nx,ny,nz
+    integer, intent(INOUT) :: p_row,p_col
     logical, dimension(3), intent(IN), optional :: periodic_bc
     
     integer :: errorcode, ierror, row, col
@@ -420,6 +422,10 @@ contains
     if (p_row==0 .and. p_col==0) then
        ! determine the best 2D processor grid
        call best_2d_grid(nproc, row, col)
+
+       ! Set provided row and col to best grid results
+       p_row = row
+       p_col = col
     else
        if (nproc /= p_row*p_col) then
           errorcode = 1
@@ -1576,6 +1582,9 @@ contains
     integer :: nfact, i, row, col, ierror, errorcode
 
     real(mytype), allocatable, dimension(:,:,:) :: u1, u2, u3
+#ifdef USE_CUDA
+    attributes(managed) :: u1, u2, u3
+#endif
 
     TYPE(DECOMP_INFO) :: decomp
 
@@ -1612,6 +1621,10 @@ contains
                DECOMP_2D_COMM_COL,ierror)
           call MPI_CART_SUB(DECOMP_2D_COMM_CART_X,(/.false.,.true./), &
                DECOMP_2D_COMM_ROW,ierror)
+#ifdef USE_CUDA
+          call MPI_COMM_RANK(DECOMP_2D_COMM_COL,col_rank,ierror)
+          call MPI_COMM_RANK(DECOMP_2D_COMM_ROW,row_rank,ierror)
+#endif
 
           ! generate 2D decomposition information for this row*col
           call decomp_info_init(nx_global,ny_global,nz_global,decomp)
@@ -1658,6 +1671,10 @@ contains
                DECOMP_2D_COMM_COL,ierror)
           call MPI_CART_SUB(DECOMP_2D_COMM_CART_X,(/.false.,.true./), &
                DECOMP_2D_COMM_ROW,ierror)
+#ifdef USE_CUDA
+          call MPI_COMM_RANK(DECOMP_2D_COMM_COL,col_rank,ierror)
+          call MPI_COMM_RANK(DECOMP_2D_COMM_ROW,row_rank,ierror)
+#endif
           
           ! generate 2D decomposition information for this row*col
           call decomp_info_init(nx_global,ny_global,nz_global,decomp)
