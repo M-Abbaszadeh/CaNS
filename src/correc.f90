@@ -1,23 +1,25 @@
 module mod_correc
+  use mod_types
   implicit none
   private
   public correc
   contains
   subroutine correc(n,dli,dzci,dt,p,up,vp,wp,u,v,w)
+    !@cuf use cudafor
     !
     ! corrects the velocity so that it is divergence free
     !
-    !@cuf use cudafor
     implicit none
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in), dimension(3) :: dli
-    real(8), intent(in), dimension(0:) :: dzci
-    real(8), intent(in) :: dt
-    real(8), intent(in) , dimension(0:,0:,0:) :: p,up,vp,wp
-    real(8), intent(out), dimension(0:,0:,0:) :: u,v,w
-    real(8) :: factori,factorj
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(3) :: dli
+    real(rp), intent(in), dimension(0:) :: dzci
+    real(rp), intent(in) :: dt
+    real(rp), intent(in) , dimension(0:,0:,0:) :: p,up,vp,wp
+    real(rp), intent(out), dimension(0:,0:,0:) :: u,v,w
+    real(rp) :: factori,factorj
+    !real(rp), dimension(0:n(3)+1) :: factork
 #ifdef USE_CUDA
-    attributes(managed):: p,up,vp,wp,u,v,w,dzci
+    attributes(managed) :: p,up,vp,wp,u,v,w,dzci
     integer:: istat
 #endif
     integer :: i,j,k,ip,jp,kp
@@ -48,7 +50,7 @@ module mod_correc
 #ifndef USE_CUDA
     !$OMP END PARALLEL DO
 #endif
-!@cuf istat=cudaDeviceSynchronize()
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine correc
 end module mod_correc

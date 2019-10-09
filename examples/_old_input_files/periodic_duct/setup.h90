@@ -1,7 +1,7 @@
    ! total number of points in x, y and z
    integer, parameter :: itot = 64, jtot = 64, ktot = 64
    ! domain length in x, y and z
-   real(8), parameter :: lx =3.d0, ly = 1.5d0, lz = 1.d0
+   real(8), parameter :: lx =3.d0, ly = 1.0d0, lz = 1.d0
    real(8), parameter :: dx = lx/(1.d0*itot), & ! grid parameters
                          dy = ly/(1.d0*jtot), &
                          dz = lz/(1.d0*ktot), &
@@ -23,7 +23,11 @@
    !      = 'log' --> logarithmic profile + noise           (u->streamwise velocity in x dir)
    !      = 'hcl' --> half channel with log profile + noise (u->streamwise velocity in x dir)
    !      = 'hcp' --> half channel with poiseuille profile  (u->streamwise velocity in x dir)
-   character(len=3), parameter :: inivel = 'zer'
+   !      = 'tgv' --> Taylor-Green vortex
+   character(len=3), parameter :: inivel = 'poi'
+   !
+   ! is_wallturb: if .true., generates an initial condition that triggers transition to turbulence in wall-bounded flows (assumes streamwise direction x)
+   logical, parameter :: is_wallturb = .false.
    !
    integer, parameter :: nstep = 100000 ! number of time steps
    logical, parameter :: restart = .false. ! restart or not from a checkpoint

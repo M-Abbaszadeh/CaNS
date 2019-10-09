@@ -9,6 +9,7 @@ module mod_rk
 #ifdef USE_NVTX
   use nvtx
 #endif 
+  use mod_types
   implicit none
   private
   public rk,rk_id
@@ -20,37 +21,38 @@ module mod_rk
     !
     !@cuf use cudafor
     implicit none
-    real(8), intent(in), dimension(2) :: rkpar
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in) :: visc,dt
-    real(8), intent(in   ), dimension(3) :: dli,l 
-    real(8), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
-    real(8), intent(in   ), dimension(0:,0:,0:) :: u ,v ,w,p
-    real(8), intent(inout), dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko
-    real(8), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
-    real(8), intent(out), dimension(0:,0:,0:) :: up,vp,wp
-    real(8), intent(out), dimension(3) :: f
-    !real(8),              dimension(n(1),n(2),n(3)) ::          dudtrk, dvdtrk, dwdtrk
-    real(8),              dimension(:,:,:) ::          dudtrk, dvdtrk, dwdtrk
-    real(8) :: factor1,factor2,factor12
-    real(8), dimension(3) :: taux,tauy,tauz
+    real(rp), intent(in), dimension(2) :: rkpar
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in) :: visc,dt
+    real(rp), intent(in   ), dimension(3) :: dli,l 
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: u ,v ,w,p
+    real(rp), intent(inout), dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko
+    real(rp), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
+    real(rp), intent(out), dimension(0:,0:,0:) :: up,vp,wp
+    real(rp), intent(out), dimension(3) :: f
+    !real(rp),              dimension(n(1),n(2),n(3)) :: dudtrk,dvdtrk,dwdtrk
+    real(rp),              dimension(:,:,:) ::          dudtrk, dvdtrk, dwdtrk
+    real(rp) :: factor1,factor2,factor12
+    real(rp), dimension(3) :: taux,tauy,tauz
 #ifdef USE_CUDA
-   attributes(managed):: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
-   attributes(managed):: dudtrko,dvdtrko,dwdtrko
-   integer:: istat
+   attributes(managed) :: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
+   attributes(managed) :: dudtrko,dvdtrko,dwdtrko
+   integer :: istat
 #endif
-    real(8) :: dxi, dyi
-    integer :: nx,ny,nz,im,ip,jm,jp,km,kp,i,j,k,nxg,nyg,nzg
-    real(8) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
-    real(8) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
-    real(8) :: taux2d,taux3d
-    real(8) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
-    real(8) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
-    real(8) :: tauy1d,tauy3d
-    real(8) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
-    real(8) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
-    real(8) :: tauz1d,tauz2d,dudtrk_temp,dvdtrk_temp,dwdtrk_temp
-    real(8) :: mean
+    real(rp) :: dxi, dyi
+    integer  :: nx,ny,nz,im,ip,jm,jp,km,kp,nxg,nyg,nzg
+    real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+    real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    real(rp) :: taux2d,taux3d
+    real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
+    real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(rp) :: tauy1d,tauy3d
+    real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    real(rp) :: tauz1d,tauz2d,dudtrk_temp,dvdtrk_temp,dwdtrk_temp
+    integer  :: i,j,k
+    real(rp) :: mean
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
@@ -84,33 +86,37 @@ module mod_rk
         do i=1,nx
           ip = i + 1
           im = i - 1
+          !
           ! touch u
+          !
           dudxp = (u(ip,j,k)-u(i,j,k))*dxi
           dudxm = (u(i,j,k)-u(im,j,k))*dxi
           dudyp = (u(i,jp,k)-u(i,j,k))*dyi
           dudym = (u(i,j,k)-u(i,jm,k))*dyi
           dudzp = (u(i,j,kp)-u(i,j,k))*dzci(k)
           dudzm = (u(i,j,k)-u(i,j,km))*dzci(km)
-          uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
-          uuim  = 0.25d0*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
-
-          dudtrk_temp = dxi*(     -uuip + uuim ) + (dudxp-dudxm)*visc*dxi + &
-                                               + (dudyp-dudym)*visc*dyi + &
-                                               + (dudzp-dudzm)*visc*dzfi(k)
-
-
-          uvjp  = 0.25d0*( u(i,jp,k)+u(i,j,k) ) !*( v(ip,j ,k )+v(i,j ,k ) )
-          uvjm  = 0.25d0*( u(i,jm,k)+u(i,j,k) ) !*( v(ip,jm,k )+v(i,jm,k ) )
-          uwkp  = 0.25d0*( u(i,j,kp)+u(i,j,k) ) !*( w(ip,j ,k )+w(i,j ,k ) )
-          uwkm  = 0.25d0*( u(i,j,km)+u(i,j,k) ) !*( w(ip,j ,km)+w(i,j ,km) )
-          uvip  = 0.25d0*( u(i ,j,k)+u(i ,jp,k) ) !*( v(i,j,k )+v(ip,j ,k) )
-          uvim  = 0.25d0*( u(im,j,k)+u(im,jp,k) ) !*( v(i,j,k )+v(im,j ,k) )
-          uwip  = 0.25d0*( u(i ,j ,k)+u(i ,j ,kp) ) !*( w(i,j,k)+w(ip,j,k) )
-          uwim  = 0.25d0*( u(im,j ,k)+u(im,j ,kp) ) !*( w(i,j,k)+w(im,j,k) )
-
+          uuip  = 0.25*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
+          uuim  = 0.25*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
+          !
+          ! momentum balance
+          !
+          dudtrk_temp = dxi*( -uuip + uuim ) + (dudxp-dudxm)*visc*dxi + &
+                                             + (dudyp-dudym)*visc*dyi + &
+                                             + (dudzp-dudzm)*visc*dzfi(k)
+          !
+          uvjp  = 0.25*( u(i,jp,k)+u(i,j,k) ) !*( v(ip,j ,k )+v(i,j ,k ) )
+          uvjm  = 0.25*( u(i,jm,k)+u(i,j,k) ) !*( v(ip,jm,k )+v(i,jm,k ) )
+          uwkp  = 0.25*( u(i,j,kp)+u(i,j,k) ) !*( w(ip,j ,k )+w(i,j ,k ) )
+          uwkm  = 0.25*( u(i,j,km)+u(i,j,k) ) !*( w(ip,j ,km)+w(i,j ,km) )
+          uvip  = 0.25*( u(i ,j,k)+u(i ,jp,k) ) !*( v(i,j,k )+v(ip,j ,k) )
+          uvim  = 0.25*( u(im,j,k)+u(im,jp,k) ) !*( v(i,j,k )+v(im,j ,k) )
+          uwip  = 0.25*( u(i ,j ,k)+u(i ,j ,kp) ) !*( w(i,j,k)+w(ip,j,k) )
+          uwim  = 0.25*( u(im,j ,k)+u(im,j ,kp) ) !*( w(i,j,k)+w(im,j,k) )
+          !
           ! touch v
-          vvjp  = 0.25d0*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
-          vvjm  = 0.25d0*( v(i,j,k )+v(i,jm,k)  )*( v(i,j,k )+v(i ,jm,k) )
+          !
+          vvjp  = 0.25*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
+          vvjm  = 0.25*( v(i,j,k )+v(i,jm,k)  )*( v(i,j,k )+v(i ,jm,k) )
           dvdxp = (v(ip,j,k)-v(i,j,k))*dxi
           dvdxm = (v(i,j,k)-v(im,j,k))*dxi
           dvdyp = (v(i,jp,k)-v(i,j,k))*dyi
@@ -119,24 +125,23 @@ module mod_rk
           dvdzm = (v(i,j,k)-v(i,j,km))*dzci(km)
           uvip  = uvip*( v(i,j,k )+v(ip,j ,k) )
           uvim  = uvim*( v(i,j,k )+v(im,j ,k) )
-
-
-          dvdtrk_temp =   dxi*(     -uvip + uvim ) + (dvdxp-dvdxm)*visc*dxi+ &
-                        dyi*(     -vvjp + vvjm ) + (dvdyp-dvdym)*visc*dyi+ &
-                                                   (dvdzp-dvdzm)*visc*dzfi(k)
-
+          !
+          dvdtrk_temp =   dxi*( -uvip + uvim ) + (dvdxp-dvdxm)*visc*dxi+ &
+                          dyi*( -vvjp + vvjm ) + (dvdyp-dvdym)*visc*dyi+ &
+                                                 (dvdzp-dvdzm)*visc*dzfi(k)
           uvjp  = uvjp*( v(ip,j ,k )+v(i,j ,k ) )
           uvjm  = uvjm*( v(ip,jm,k )+v(i,jm,k ) )
-          dudtrk_temp = dudtrk_temp + dyi*(     -uvjp + uvjm )
-
-          wvkp  = 0.25d0*( v(i ,j ,kp)+v(i ,j ,k ) ) !*( w(i,j,k )+w(i,jp,k ) )
-          wvkm  = 0.25d0*( v(i ,j ,km)+v(i ,j ,k ) ) !*( w(i,j,km)+w(i,jp,km) )
-          vwjp  = 0.25d0*( v(i ,j ,k )+v(i ,j ,kp) ) !*( w(i,j,k )+w(i,jp,k ) )
-          vwjm  = 0.25d0*( v(i ,jm,k )+v(i ,jm,kp) ) !*( w(i,j,k )+w(i,jm,k ) )
-
-          !touch w
-          wwkp  = 0.25d0*( w(i,j,k)+w(i,j,kp) )*( w(i ,j ,k)+w(i ,j ,kp) )
-          wwkm  = 0.25d0*( w(i,j,k)+w(i,j,km) )*( w(i ,j ,k)+w(i ,j ,km) )
+          dudtrk_temp = dudtrk_temp + dyi*( -uvjp + uvjm )
+          !
+          wvkp  = 0.25*( v(i ,j ,kp)+v(i ,j ,k ) ) !*( w(i,j,k )+w(i,jp,k ) )
+          wvkm  = 0.25*( v(i ,j ,km)+v(i ,j ,k ) ) !*( w(i,j,km)+w(i,jp,km) )
+          vwjp  = 0.25*( v(i ,j ,k )+v(i ,j ,kp) ) !*( w(i,j,k )+w(i,jp,k ) )
+          vwjm  = 0.25*( v(i ,jm,k )+v(i ,jm,kp) ) !*( w(i,j,k )+w(i,jm,k ) )
+          !
+          ! touch w
+          !
+          wwkp  = 0.25*( w(i,j,k)+w(i,j,kp) )*( w(i ,j ,k)+w(i ,j ,kp) )
+          wwkm  = 0.25*( w(i,j,k)+w(i,j,km) )*( w(i ,j ,k)+w(i ,j ,km) )
           dwdxp = (w(ip,j,k)-w(i,j,k))*dxi
           dwdxm = (w(i,j,k)-w(im,j,k))*dxi
           dwdyp = (w(i,jp,k)-w(i,j,k))*dyi
@@ -147,27 +152,24 @@ module mod_rk
           uwim  = uwim*( w(i,j,k)+w(im,j,k) )
           vwjp  = vwjp*( w(i,j,k )+w(i,jp,k ) )
           vwjm  = vwjm*( w(i,j,k )+w(i,jm,k ) )
-
-
+          !
           dwdtrk_temp =   dxi*(     -uwip + uwim ) + (dwdxp-dwdxm)*visc*dxi+ &
                           dyi*(     -vwjp + vwjm ) + (dwdyp-dwdym)*visc*dyi+ &
                           dzci(k)*( -wwkp + wwkm ) + (dwdzp-dwdzm)*visc*dzci(k)
-
+          !
+          ! momentum balance
+          !
           uwkp  = uwkp*( w(ip,j ,k )+w(i,j ,k ) )
           uwkm  = uwkm*( w(ip,j ,km)+w(i,j ,km) )
           dudtrk_temp = dudtrk_temp + dzfi(k)*( -uwkp + uwkm )
-
+          !
           wvkp  = wvkp*( w(i,j,k )+w(i,jp,k ) )
           wvkm  = wvkm*( w(i,j,km)+w(i,jp,km) )
           dvdtrk_temp = dvdtrk_temp + dzfi(k)*( -wvkp + wvkm )
-
-          !
-          ! Momentum balance
           !
           dudtrk(i,j,k) = dudtrk_temp
           dvdtrk(i,j,k) = dvdtrk_temp
           dwdtrk(i,j,k) = dwdtrk_temp
-
         enddo
       enddo
     enddo
@@ -176,8 +178,8 @@ module mod_rk
 #endif
     !@cuf istat=cudaDeviceSynchronize()
     taux(:) = 0.
-    taux2d=0.d0
-    taux3d=0.d0
+    taux2d  = 0.
+    taux3d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -189,7 +191,7 @@ module mod_rk
       enddo
     enddo
     !@cuf istat=cudaDeviceSynchronize()
-    taux(2)=taux2d
+    taux(2) = taux2d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -202,18 +204,17 @@ module mod_rk
     enddo
     !@cuf istat=cudaDeviceSynchronize()
     taux(3)=taux3d
-
-    call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    taux(1) = taux(1)/(1.d0*nyg)
-    taux(2) = taux(2)/(1.d0*nxg)
-    taux(3) = taux(3)/(1.d0*nxg*nyg)
-
+    taux(1) = taux(1)/(1.*nyg)
+    taux(2) = taux(2)/(1.*nxg)
+    taux(3) = taux(3)/(1.*nxg*nyg)
+    !
     tauy(:) = 0.
-    tauy1d=0.d0
-    tauy3d=0.d0
+    tauy1d  = 0.
+    tauy3d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -225,7 +226,7 @@ module mod_rk
       enddo
     enddo
     !@cuf istat=cudaDeviceSynchronize()
-    tauy(1)=tauy1d
+    tauy(1) = tauy1d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -237,18 +238,18 @@ module mod_rk
       enddo
     enddo
     !@cuf istat=cudaDeviceSynchronize()
-    tauy(3)=tauy3d
-    call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    tauy(3) = tauy3d
+    call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    tauy(1) = tauy(1)/(1.d0*nyg)
-    tauy(2) = tauy(2)/(1.d0*nxg)
-    tauy(3) = tauy(3)/(1.d0*nxg*nyg)
-
+    tauy(1) = tauy(1)/(1.*nyg)
+    tauy(2) = tauy(2)/(1.*nxg)
+    tauy(3) = tauy(3)/(1.*nxg*nyg)
+    !
     tauz(:) = 0.
-    tauz1d = 0.d0
-    tauz2d = 0.d0
+    tauz1d  = 0.
+    tauz2d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -260,7 +261,7 @@ module mod_rk
       enddo
     enddo
     !@cuf istat=cudaDeviceSynchronize()
-    tauz(1)=tauz1d
+    tauz(1) = tauz1d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -272,19 +273,19 @@ module mod_rk
       enddo
     enddo
     !@cuf istat=cudaDeviceSynchronize()
-    tauz(2)=tauz2d
-    call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    tauz(2) = tauz2d
+    call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    tauz(1) = tauz(1)/(1.d0*nyg)
-    tauz(2) = tauz(2)/(1.d0*nxg)
-    tauz(3) = tauz(3)/(1.d0*nxg*nyg)
-
+    tauz(1) = tauz(1)/(1.*nyg)
+    tauz(2) = tauz(2)/(1.*nxg)
+    tauz(3) = tauz(3)/(1.*nxg*nyg)
+    !
 #ifdef USE_NVTX
       call nvtxEndRange
 #endif
-
+    !
     f(1) = (factor1*sum(taux(:)/l(:)) + factor2*sum(tauxo(:)/l(:)))
     f(2) = (factor1*sum(tauy(:)/l(:)) + factor2*sum(tauyo(:)/l(:)))
     f(3) = (factor1*sum(tauz(:)/l(:)) + factor2*sum(tauzo(:)/l(:)))
@@ -311,12 +312,10 @@ module mod_rk
           !up(i,j,k) = up(i,j,k) + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)
           !vp(i,j,k) = vp(i,j,k) + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)
           !wp(i,j,k) = wp(i,j,k) + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)
-
           ! momp and update_cuf1 in place:
           up(i,j,k) = u(i,j,k) + factor12*( - dxi*    ( p(ip,j,k)-p(i,j,k) )  ) + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)
           vp(i,j,k) = v(i,j,k) + factor12*( - dyi*    ( p(i,jp,k)-p(i,j,k) )  ) + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)
           wp(i,j,k) = w(i,j,k) + factor12*( - dzci(k)*( p(i,j,kp)-p(i,j,k) )  ) + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)
-
           ! d*dtrk buffers swapped with pointers in main
           !dudtrko(i,j,k) = dudtrk(i,j,k)
           !dvdtrko(i,j,k) = dvdtrk(i,j,k)
@@ -327,15 +326,15 @@ module mod_rk
 #ifndef USE_CUDA
     !$OMP END PARALLEL DO
 #endif
-
- #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("chkmean",1)
- #endif
+!
+#ifdef USE_NVTX
+     call nvtxEndRange
+     call nvtxStartRange("chkmean",1)
+#endif
     !
     ! bulk velocity forcing
     !
-    f(:) = 0.d0
+    f(:) = 0.
     if(is_forced(1)) then
       call chkmean(n,dzflzi,up,mean)
       f(1) = velf(1) - mean
@@ -361,53 +360,55 @@ module mod_rk
     ! for time integration of the momentum equations with implicit diffusion.
     !
     implicit none
-    real(8), intent(in), dimension(2) :: rkpar
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in) :: visc,dt
-    real(8), intent(in   ), dimension(3) :: dli,l 
-    real(8), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
-    real(8), intent(in   ), dimension(0:,0:,0:) :: u ,v ,w,p
-    real(8), intent(inout), dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko
-    real(8), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
-    real(8), intent(out), dimension(0:,0:,0:) :: up,vp,wp
-    real(8), intent(out), dimension(3) :: f
-    real(8),              dimension(:,:,:) ::          dudtrk, dvdtrk, dwdtrk
-    real(8),              dimension(:,:,:) ::          dudtrkd, dvdtrkd, dwdtrkd
-    real(8) :: factor1,factor2,factor12
-    real(8), dimension(3) :: taux,tauy,tauz
+    real(rp), intent(in), dimension(2) :: rkpar
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in) :: visc,dt
+    real(rp), intent(in   ), dimension(3) :: dli,l 
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: u ,v ,w,p
+    real(rp), intent(inout), dimension(:,:,:) :: dudtrko,dvdtrko,dwdtrko
+    real(rp), intent(inout), dimension(3) :: tauxo,tauyo,tauzo
+    real(rp), intent(out), dimension(0:,0:,0:) :: up,vp,wp
+    real(rp), intent(out), dimension(3) :: f
+    real(rp),              dimension(n(1),n(2),n(3)) :: dudtrk , dvdtrk , dwdtrk
+    real(rp),              dimension(n(1),n(2),n(3)) :: dudtrkd, dvdtrkd, dwdtrkd
+    real(rp) :: factor1,factor2,factor12
+    real(rp), dimension(3) :: taux,tauy,tauz
 #ifdef USE_CUDA
-   attributes(managed):: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
-   attributes(managed):: dudtrko,dvdtrko,dwdtrko,dudtrkd, dvdtrkd, dwdtrkd
-   integer:: istat
+   attributes(managed) :: dzci,dzfi,dzflzi,dzclzi,u ,v ,w,p, dudtrk, dvdtrk, dwdtrk, up,vp,wp
+   attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrkd, dvdtrkd, dwdtrkd
+   integer :: istat
 #endif
     integer :: i,j,k
-    real(8) :: mean
+    real(rp) :: mean
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt
     factor12 = factor1 + factor2
     !
 #ifdef USE_NVTX
-      call nvtxStartRange("momxpd",1)
+    call nvtxStartRange("momxpd",1)
 #endif
     call momxpd(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,dzflzi,visc,p,u,dudtrk,dudtrkd,taux)
 #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("momypd",2)
+    call nvtxEndRange
+    call nvtxStartRange("momypd",2)
 #endif
     call momypd(n(1),n(2),n(3),dli(2),dli(2),dzci,dzfi,dzflzi,visc,p,v,dvdtrk,dvdtrkd,tauy)
 #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("momyzd",2)
+    call nvtxEndRange
+    call nvtxStartRange("momyzd",2)
 #endif
     call momzpd(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,dzflzi,visc,p,w,dwdtrk,dwdtrkd,tauz)
     f(1) = factor12*sum(taux(:)/l(:))
     f(2) = factor12*sum(tauy(:)/l(:))
     f(3) = factor12*sum(tauz(:)/l(:))
 #ifdef USE_NVTX
-      call nvtxEndRange
+    call nvtxEndRange
 #endif
+    !
     ! alternatively, calculate force from the mean velocity directly
+    !
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -428,25 +429,24 @@ module mod_rk
     !$OMP END PARALLEL DO
 #endif
     !@cuf istat=cudaDeviceSynchronize()
-
 #ifdef USE_NVTX
-      call nvtxStartRange("momxa",1)
+    call nvtxStartRange("momxa",1)
 #endif
     call momxa(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dudtrk)
 #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("momya",2)
+    call nvtxEndRange
+    call nvtxStartRange("momya",2)
 #endif
     call momya(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dvdtrk)
 #ifdef USE_NVTX
-      call nvtxEndRange
-      call nvtxStartRange("momza",2)
+    call nvtxEndRange
+    call nvtxStartRange("momza",2)
 #endif
     call momza(n(1),n(2),n(3),dli(1),dli(2),dzci,dzfi,u,v,w,dwdtrk)
 #ifdef USE_NVTX
-      call nvtxEndRange
+    call nvtxEndRange
 #endif
-
+    !
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -457,7 +457,6 @@ module mod_rk
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          ! could be split in two loops, because factor2=0 for istep=1, but like this reads nicer
           up(i,j,k) = up(i,j,k) + factor1*dudtrk(i,j,k) + factor2*dudtrko(i,j,k)
           vp(i,j,k) = vp(i,j,k) + factor1*dvdtrk(i,j,k) + factor2*dvdtrko(i,j,k)
           wp(i,j,k) = wp(i,j,k) + factor1*dwdtrk(i,j,k) + factor2*dwdtrko(i,j,k)
@@ -474,7 +473,7 @@ module mod_rk
     !
     ! bulk velocity forcing
     !
-    f(:) = 0.d0
+    f(:) = 0.
     if(is_forced(1)) then
       call chkmean(n,dzflzi,up,mean)
       f(1) = velf(1) - mean
@@ -500,9 +499,9 @@ module mod_rk
     do k=1,n(3)
       do j=1,n(2)
         do i=1,n(1)
-          up(i,j,k) = up(i,j,k) - .5d0*factor12*dudtrkd(i,j,k)
-          vp(i,j,k) = vp(i,j,k) - .5d0*factor12*dvdtrkd(i,j,k)
-          wp(i,j,k) = wp(i,j,k) - .5d0*factor12*dwdtrkd(i,j,k)
+          up(i,j,k) = up(i,j,k) - .5*factor12*dudtrkd(i,j,k)
+          vp(i,j,k) = vp(i,j,k) - .5*factor12*dvdtrkd(i,j,k)
+          wp(i,j,k) = wp(i,j,k) - .5*factor12*dwdtrkd(i,j,k)
         enddo
       enddo
     enddo
@@ -518,17 +517,17 @@ module mod_rk
     ! for time integration of the scalar field.
     !
     implicit none
-    real(8), intent(in   ), dimension(2) :: rkpar
-    integer, intent(in   ), dimension(3) :: n
-    real(8), intent(in   ), dimension(3) :: dli
-    real(8), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
-    real(8), intent(in   ) :: visc,dt
-    real(8), intent(in   ), dimension(0:,0:,0:) :: u,v,w
-    real(8), intent(inout), dimension(:,:,:) :: dsdtrko
-    real(8), intent(inout), dimension(0:,0:,0:) :: s
-    real(8),              dimension(n(1),n(2),n(3)) :: dsdtrk
-    real(8) :: factor1,factor2,factor12
-    integer :: i,j,k
+    real(rp), intent(in   ), dimension(2) :: rkpar
+    integer , intent(in   ), dimension(3) :: n
+    real(rp), intent(in   ), dimension(3) :: dli
+    real(rp), intent(in   ), dimension(0:) :: dzci,dzfi,dzflzi,dzclzi
+    real(rp), intent(in   ) :: visc,dt
+    real(rp), intent(in   ), dimension(0:,0:,0:) :: u,v,w
+    real(rp), intent(inout), dimension(:,:,:) :: dsdtrko
+    real(rp), intent(inout), dimension(0:,0:,0:) :: s
+    real(rp),              dimension(n(1),n(2),n(3)) :: dsdtrk
+    real(rp) :: factor1,factor2,factor12
+    integer  :: i,j,k
     !
     factor1 = rkpar(1)*dt
     factor2 = rkpar(2)*dt

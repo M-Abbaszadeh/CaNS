@@ -2,7 +2,7 @@
 ! parameter file for gen_xdmf.f90
 ! Pedro Costa (p.simoes.costa@gmail.com)
 !
-character (len=3), parameter :: casename = 'C01'
+character (len=10), parameter :: casename = 'DNS'
 !
 ! number and names of scalar fields;
 ! the number of entries in array scalname *must*
@@ -36,9 +36,9 @@ real(8), parameter :: dt = 0.01d0
 !
 ! first field, last field and step size
 !
-integer, parameter :: fldstart = 100 , &
-                      fldend   = 300, &
-                      nskip    = 100
+integer, parameter :: fldstart = 1000 , &
+                      fldend   = 3000, &
+                      nskip    = 1000
 !
 ! to compare time evolution of a scalar to a certain
 ! fixed time instant: 
@@ -48,4 +48,8 @@ integer, parameter :: fldstart = 100 , &
 !  the inital condition)
 !
 logical, parameter :: is_fldcmp  = .false.
-integer, parameter :: fldcmp     = 100
+integer, parameter :: fldcmp     = 0
+!
+! precision of input file (8 -- double; 4 -- single)
+!
+integer, parameter :: iprec = 8

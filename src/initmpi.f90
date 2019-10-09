@@ -1,10 +1,11 @@
 module mod_initmpi
-  !@cuf use cudafor
   use mpi
   use decomp_2d
-  use mod_param     , only: dims, imax, jmax, itot, jtot
+  use mod_param     , only: dims,itot,jtot,imax,jmax
   use mod_common_mpi, only: myid,coord,comm_cart,left,right,front,back,xhalo,yhalo,ierr,mydev
   use mod_common_mpi, only: xsl_buf, xrl_buf, ysl_buf, yrl_buf, xsr_buf, xrr_buf, ysr_buf, yrr_buf
+  use mod_types
+  !@cuf use cudafor
   implicit none
   private
   public initmpi
@@ -16,39 +17,38 @@ module mod_initmpi
     integer :: ntx,nty,ntz
     logical, dimension(3) :: periods
 #ifdef USE_CUDA
-     integer:: dev, local_rank, local_comm, istat
+     integer :: dev, local_rank, local_comm, istat
 #endif
     !
-    call MPI_INIT(ierr)
-
 #ifdef USE_CUDA
-!  Assign a different GPU to each MPI rank
-!  TBD: need to change all the memory allocation to dynamic, otherwise all the arrays
-!  will be allocated on device 0
+    ! 
+    !  assign a different GPU to each MPI rank
+    !  note: all the memory allocation should be dynamic, otherwise all the arrays
+    !  will be allocated on device 0
+    !
     mydev=0
     call MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0, &
          MPI_INFO_NULL, local_comm, ierr)
     call MPI_Comm_rank(local_comm, mydev, ierr)
     ierr = cudaSetDevice(mydev)
     print  *," MPI rank",mydev," using GPU",mydev
-
 #endif
-
     periods(:) = .false.
     if( bc(0,1)//bc(1,1).eq.'PP' ) periods(1) = .true.
     if( bc(0,2)//bc(1,2).eq.'PP' ) periods(2) = .true.
     if( bc(0,3)//bc(1,3).eq.'PP' ) periods(3) = .true.
-
-    ! Set dims to 0 to enable autotuning
+    !
+    ! set dims to 0 to enable autotuning
+    !
     dims(1) = 0
     dims(2) = 0
-
     call decomp_2d_init(n(1),n(2),n(3),dims(1),dims(2),periods)
-
-    ! Set imax and jmax using autotuned processor grid dimensions
+    ! 
+    ! set imax and jmax using autotuned processor grid dimensions
+    !
     imax = itot/dims(1)
     jmax = jtot/dims(2)
-
+    !
     myid = nrank
     comm_cart = DECOMP_2D_COMM_CART_Z
     coord(1) = (zstart(1)-1)*dims(1)/n(1)
@@ -69,8 +69,8 @@ module mod_initmpi
     !         * for fixed j, (k1+1) blocks of (i1+1) elements,
     !           with (i1+1)*(j1+1) elements between start and end
     !
-    call MPI_TYPE_VECTOR(nty*ntz,1  ,ntx    ,MPI_REAL8,xhalo,ierr)
-    call MPI_TYPE_VECTOR(ntz    ,ntx,ntx*nty,MPI_REAL8,yhalo,ierr)
+    call MPI_TYPE_VECTOR(nty*ntz,1  ,ntx    ,MPI_REAL_RP,xhalo,ierr)
+    call MPI_TYPE_VECTOR(ntz    ,ntx,ntx*nty,MPI_REAL_RP,yhalo,ierr)
     call MPI_TYPE_COMMIT(xhalo,ierr)
     call MPI_TYPE_COMMIT(yhalo,ierr)
 
@@ -112,7 +112,7 @@ module mod_initmpi
 #endif
 #endif
 
- return
+    return
   end subroutine initmpi
 end module mod_initmpi
 

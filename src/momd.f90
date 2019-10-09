@@ -2,23 +2,24 @@ module mod_momd
   use mpi
   use mod_param     , only: dims
   use mod_common_mpi, only: ierr
- !@cuf use cudafor
+  use mod_types
+  !@cuf use cudafor
   implicit none
   private
   public momxa,momya,momza,momxpd,momypd,momzpd
   contains
   subroutine momxa(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dudt)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi
-    real(8), intent(in), dimension(0:) :: dzci,dzfi
-    real(8), dimension(0:,0:,0:), intent(in) :: u,v,w
-    real(8), dimension(:,:,:), intent(out) :: dudt
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), dimension(0:,0:,0:), intent(in) :: u,v,w
+    real(rp), dimension(:,:,:), intent(out) :: dudt
     integer :: im,ip,jm,jp,km,kp,i,j,k
-    real(8) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+    real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
 #ifdef USE_CUDA
-    attributes(managed):: u,v,w,dudt,dzci,dzfi
-    integer:: istat
+    attributes(managed) :: u,v,w,dudt,dzci,dzfi
+    integer :: istat
 #endif
     !
 #ifdef USE_CUDA
@@ -38,14 +39,14 @@ module mod_momd
         do i=1,nx
           ip = i + 1
           im = i - 1
-          uuip  = 0.25d0*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
-          uuim  = 0.25d0*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
-          uvjp  = 0.25d0*( u(i,jp,k)+u(i,j,k) )*( v(ip,j ,k )+v(i,j ,k ) )
-          uvjm  = 0.25d0*( u(i,jm,k)+u(i,j,k) )*( v(ip,jm,k )+v(i,jm,k ) )
-          uwkp  = 0.25d0*( u(i,j,kp)+u(i,j,k) )*( w(ip,j ,k )+w(i,j ,k ) )
-          uwkm  = 0.25d0*( u(i,j,km)+u(i,j,k) )*( w(ip,j ,km)+w(i,j ,km) )
+          uuip  = 0.25*( u(ip,j,k)+u(i,j,k) )*( u(ip,j ,k )+u(i,j ,k ) )
+          uuim  = 0.25*( u(im,j,k)+u(i,j,k) )*( u(im,j ,k )+u(i,j ,k ) )
+          uvjp  = 0.25*( u(i,jp,k)+u(i,j,k) )*( v(ip,j ,k )+v(i,j ,k ) )
+          uvjm  = 0.25*( u(i,jm,k)+u(i,j,k) )*( v(ip,jm,k )+v(i,jm,k ) )
+          uwkp  = 0.25*( u(i,j,kp)+u(i,j,k) )*( w(ip,j ,k )+w(i,j ,k ) )
+          uwkm  = 0.25*( u(i,j,km)+u(i,j,k) )*( w(ip,j ,km)+w(i,j ,km) )
           !
-          ! Momentum balance
+          ! momentum balance
           !
           dudt(i,j,k) = dxi*(     -uuip + uuim ) + &
                         dyi*(     -uvjp + uvjm ) + &
@@ -62,16 +63,16 @@ module mod_momd
   !
   subroutine momya(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dvdt)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi
-    real(8), intent(in), dimension(0:) :: dzci,dzfi
-    real(8), dimension(0:,0:,0:), intent(in) :: u,v,w
-    real(8), dimension(:,:,:), intent(out) :: dvdt
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), dimension(0:,0:,0:), intent(in) :: u,v,w
+    real(rp), dimension(:,:,:), intent(out) :: dvdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
-    real(8) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
+    real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
 #ifdef USE_CUDA
-    attributes(managed):: u,v,w,dvdt,dzci,dzfi
-    integer:: istat
+    attributes(managed) :: u,v,w,dvdt,dzci,dzfi
+    integer :: istat
 #endif
     !
 #ifdef USE_CUDA
@@ -91,14 +92,14 @@ module mod_momd
         do i=1,nx
           ip = i + 1
           im = i - 1
-          uvip  = 0.25d0*( u(i ,j,k)+u(i ,jp,k) )*( v(i,j,k )+v(ip,j ,k) )
-          uvim  = 0.25d0*( u(im,j,k)+u(im,jp,k) )*( v(i,j,k )+v(im,j ,k) )
-          vvjp  = 0.25d0*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
-          vvjm  = 0.25d0*( v(i,j,k )+v(i,jm,k)  )*( v(i,j,k )+v(i ,jm,k) )
-          wvkp  = 0.25d0*( w(i,j,k )+w(i,jp,k)  )*( v(i,j,kp)+v(i ,j ,k) )
-          wvkm  = 0.25d0*( w(i,j,km)+w(i,jp,km) )*( v(i,j,km)+v(i ,j ,k) )
+          uvip  = 0.25*( u(i ,j,k)+u(i ,jp,k) )*( v(i,j,k )+v(ip,j ,k) )
+          uvim  = 0.25*( u(im,j,k)+u(im,jp,k) )*( v(i,j,k )+v(im,j ,k) )
+          vvjp  = 0.25*( v(i,j,k )+v(i,jp,k)  )*( v(i,j,k )+v(i ,jp,k) )
+          vvjm  = 0.25*( v(i,j,k )+v(i,jm,k)  )*( v(i,j,k )+v(i ,jm,k) )
+          wvkp  = 0.25*( w(i,j,k )+w(i,jp,k)  )*( v(i,j,kp)+v(i ,j ,k) )
+          wvkm  = 0.25*( w(i,j,km)+w(i,jp,km) )*( v(i,j,km)+v(i ,j ,k) )
           !
-          ! Momentum balance
+          ! momentum balance
           !
           dvdt(i,j,k) = dxi*(     -uvip + uvim ) + &
                         dyi*(     -vvjp + vvjm ) + &
@@ -115,16 +116,16 @@ module mod_momd
   !
   subroutine momza(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dwdt)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi
-    real(8), intent(in), dimension(0:) :: dzci,dzfi
-    real(8), dimension(0:,0:,0:), intent(in) :: u,v,w
-    real(8), dimension(:,:,:), intent(out) :: dwdt
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
+    real(rp), dimension(0:,0:,0:), intent(in) :: u,v,w
+    real(rp), dimension(:,:,:), intent(out) :: dwdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
-    real(8) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
 #ifdef USE_CUDA
-    attributes(managed):: u,v,w,dwdt,dzci,dzfi
-    integer:: istat
+    attributes(managed) :: u,v,w,dwdt,dzci,dzfi
+    integer :: istat
 #endif
     !
 #ifdef USE_CUDA
@@ -144,14 +145,14 @@ module mod_momd
         do i=1,nx
           ip = i + 1
           im = i - 1
-          uwip  = 0.25d0*( w(i,j,k)+w(ip,j,k) )*( u(i ,j ,k)+u(i ,j ,kp) )
-          uwim  = 0.25d0*( w(i,j,k)+w(im,j,k) )*( u(im,j ,k)+u(im,j ,kp) )
-          vwjp  = 0.25d0*( w(i,j,k)+w(i,jp,k) )*( v(i ,j ,k)+v(i ,j ,kp) )
-          vwjm  = 0.25d0*( w(i,j,k)+w(i,jm,k) )*( v(i ,jm,k)+v(i ,jm,kp) )
-          wwkp  = 0.25d0*( w(i,j,k)+w(i,j,kp) )*( w(i ,j ,k)+w(i ,j ,kp) )
-          wwkm  = 0.25d0*( w(i,j,k)+w(i,j,km) )*( w(i ,j ,k)+w(i ,j ,km) )
+          uwip  = 0.25*( w(i,j,k)+w(ip,j,k) )*( u(i ,j ,k)+u(i ,j ,kp) )
+          uwim  = 0.25*( w(i,j,k)+w(im,j,k) )*( u(im,j ,k)+u(im,j ,kp) )
+          vwjp  = 0.25*( w(i,j,k)+w(i,jp,k) )*( v(i ,j ,k)+v(i ,j ,kp) )
+          vwjm  = 0.25*( w(i,j,k)+w(i,jm,k) )*( v(i ,jm,k)+v(i ,jm,kp) )
+          wwkp  = 0.25*( w(i,j,k)+w(i,j,kp) )*( w(i ,j ,k)+w(i ,j ,kp) )
+          wwkm  = 0.25*( w(i,j,k)+w(i,j,km) )*( w(i ,j ,k)+w(i ,j ,km) )
           !
-          ! Momentum balance
+          ! momentum balance
           !
           dwdt(i,j,k) = dxi*(     -uwip + uwim ) + &
                         dyi*(     -vwjp + vwjm ) + &
@@ -168,19 +169,19 @@ module mod_momd
   !
   subroutine momxpd(nx,ny,nz,dxi,dyi,dzci,dzfi,dzflzi,visc,p,u,dudt,dudtd,taux)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi,visc
-    real(8), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
-    real(8), dimension(0:,0:,0:), intent(in) :: p,u
-    real(8), dimension(:,:,:), intent(out) :: dudt,dudtd
-    real(8), dimension(3)  , intent(out) :: taux
-    real(8) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
-    integer :: im,ip,jm,jp,km,kp,i,j,k
-    integer :: nxg,nyg,nzg
-    real(8) :: taux2d,taux3d
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
+    real(rp), dimension(0:,0:,0:), intent(in) :: p,u
+    real(rp), dimension(:,:,:), intent(out) :: dudt,dudtd
+    real(rp), dimension(3)  , intent(out) :: taux
+    real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    integer  :: im,ip,jm,jp,km,kp,i,j,k
+    integer  :: nxg,nyg,nzg
+    real(rp) :: taux2d,taux3d
 #ifdef USE_CUDA
-    attributes(managed):: u,p,dudt,dudtd,dzci,dzfi,dzflzi
-    integer:: istat
+    attributes(managed) :: u,p,dudt,dudtd,dzci,dzfi,dzflzi
+    integer :: istat
 #endif
  
 #ifdef USE_CUDA
@@ -219,8 +220,8 @@ module mod_momd
 #endif
     !@cuf istat=cudaDeviceSynchronize()
     taux(:) = 0.
-    taux2d=0.d0
-    taux3d=0.d0
+    taux2d  = 0.
+    taux3d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -231,7 +232,7 @@ module mod_momd
         taux2d = taux2d + (dudyp+dudym)
       enddo
     enddo
-    taux(2)=taux2d
+    taux(2) = taux2d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -242,33 +243,33 @@ module mod_momd
         taux3d = taux3d + (dudzp+dudzm)
       enddo
     enddo
-    taux(3)=taux3d
-!@cuf istat=cudaDeviceSynchronize()
-    call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    taux(3) = taux3d
+    !@cuf istat=cudaDeviceSynchronize()
+    call mpi_allreduce(MPI_IN_PLACE,taux(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    taux(1) = taux(1)/(1.d0*nyg)
-    taux(2) = taux(2)/(1.d0*nxg)
-    taux(3) = taux(3)/(1.d0*nxg*nyg)
+    taux(1) = taux(1)/(1.*nyg)
+    taux(2) = taux(2)/(1.*nxg)
+    taux(3) = taux(3)/(1.*nxg*nyg)
     return
   end subroutine momxpd
   !
   subroutine momypd(nx,ny,nz,dxi,dyi,dzci,dzfi,dzflzi,visc,p,v,dvdt,dvdtd,tauy)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi,visc
-    real(8), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
-    real(8), dimension(0:,0:,0:), intent(in) :: p,v
-    real(8), dimension(:,:,:), intent(out) :: dvdt,dvdtd
-    real(8), dimension(3)  , intent(out) :: tauy
-    real(8) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
-    integer :: im,ip,jm,jp,km,kp,i,j,k
-    integer :: nxg,nyg,nzg
-    real(8) :: tauy1d,tauy3d
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
+    real(rp), dimension(0:,0:,0:), intent(in) :: p,v
+    real(rp), dimension(:,:,:), intent(out) :: dvdt,dvdtd
+    real(rp), dimension(3)  , intent(out) :: tauy
+    real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    integer  :: im,ip,jm,jp,km,kp,i,j,k
+    integer  :: nxg,nyg,nzg
+    real(rp) :: tauy1d,tauy3d
 #ifdef USE_CUDA
-    attributes(managed):: v,p,dvdt,dvdtd,dzci,dzfi,dzflzi
-    integer:: istat
+    attributes(managed) :: v,p,dvdt,dvdtd,dzci,dzfi,dzflzi
+    integer :: istat
 #endif
     !
 #ifdef USE_CUDA
@@ -306,8 +307,8 @@ module mod_momd
 #endif
     !@cuf istat=cudaDeviceSynchronize()
     tauy(:) = 0.
-    tauy1d = 0.d0
-    tauy3d = 0.d0
+    tauy1d  = 0.
+    tauy3d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -318,7 +319,7 @@ module mod_momd
         tauy1d = tauy1d + (dvdxp+dvdxm)
       enddo
     enddo
-    tauy(1)=tauy1d
+    tauy(1) = tauy1d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -329,33 +330,33 @@ module mod_momd
         tauy3d = tauy3d + (dvdzp+dvdzm)
       enddo
     enddo
-    tauy(3)=tauy3d
+    tauy(3) = tauy3d
     !@cuf istat=cudaDeviceSynchronize()
-    call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,tauy(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    tauy(1) = tauy(1)/(1.d0*nyg)
-    tauy(2) = tauy(2)/(1.d0*nxg)
-    tauy(3) = tauy(3)/(1.d0*nxg*nyg)
+    tauy(1) = tauy(1)/(1.*nyg)
+    tauy(2) = tauy(2)/(1.*nxg)
+    tauy(3) = tauy(3)/(1.*nxg*nyg)
     return
   end subroutine momypd
   !
   subroutine momzpd(nx,ny,nz,dxi,dyi,dzci,dzfi,dzflzi,visc,p,w,dwdt,dwdtd,tauz)
     implicit none
-    integer, intent(in) :: nx,ny,nz
-    real(8), intent(in) :: dxi,dyi,visc
-    real(8), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
-    real(8), dimension(0:,0:,0:), intent(in) :: p,w
-    real(8), dimension(:,:,:), intent(out) :: dwdt,dwdtd
-    real(8), dimension(3)  , intent(out) :: tauz
-    integer :: im,ip,jm,jp,km,kp,i,j,k
-    real(8) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
-    integer :: nxg,nyg,nzg
-    real(8) :: tauz1d,tauz2d
+    integer , intent(in) :: nx,ny,nz
+    real(rp), intent(in) :: dxi,dyi,visc
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi,dzflzi
+    real(rp), dimension(0:,0:,0:), intent(in) :: p,w
+    real(rp), dimension(:,:,:), intent(out) :: dwdt,dwdtd
+    real(rp), dimension(3)  , intent(out) :: tauz
+    real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    integer  :: im,ip,jm,jp,km,kp,i,j,k
+    integer  :: nxg,nyg,nzg
+    real(rp) :: tauz1d,tauz2d
 #ifdef USE_CUDA
-    attributes(managed):: w,p,dwdt,dwdtd,dzci,dzfi,dzflzi
-    integer:: istat
+    attributes(managed) :: w,p,dwdt,dwdtd,dzci,dzfi,dzflzi
+    integer :: istat
 #endif
     !
 #ifdef USE_CUDA
@@ -394,8 +395,8 @@ module mod_momd
 #endif
     !@cuf istat=cudaDeviceSynchronize()
     tauz(:) = 0.
-    tauz1d=0.d0
-    tauz2d=0.d0
+    tauz1d  = 0.
+    tauz2d  = 0.
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -406,7 +407,7 @@ module mod_momd
         tauz1d = tauz1d+ (dwdxp+dwdxm)
       enddo
     enddo
-    tauz(1)=tauz1d
+    tauz(1) = tauz1d
 #ifdef USE_CUDA
     !$cuf kernel do(2) <<<*,*>>>
 #endif
@@ -417,15 +418,15 @@ module mod_momd
         tauz2d = tauz2d + (dwdyp+dwdym)
       enddo
     enddo
-    tauz(2)=tauz2d
+    tauz(2) = tauz2d
     !@cuf istat=cudaDeviceSynchronize()
-    call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
+    call mpi_allreduce(MPI_IN_PLACE,tauz(1),3,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
     nxg = nx*dims(1)
     nyg = ny*dims(2)
     nzg = nz
-    tauz(1) = tauz(1)/(1.d0*nyg)
-    tauz(2) = tauz(2)/(1.d0*nxg)
-    tauz(3) = tauz(3)/(1.d0*nxg*nyg)
+    tauz(1) = tauz(1)/(1.*nyg)
+    tauz(2) = tauz(2)/(1.*nxg)
+    tauz(3) = tauz(3)/(1.*nxg*nyg)
     return
   end subroutine momzpd
 end module mod_momd

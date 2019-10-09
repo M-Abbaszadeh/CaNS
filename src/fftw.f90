@@ -1,5 +1,5 @@
 module mod_fftw_param
-  use precision
+  use mod_types
   use iso_c_binding
 #ifdef USE_CUDA
   use cufft
@@ -12,13 +12,21 @@ module mod_fftw_param
   interface
      type(C_PTR) function fftw_plan_guru_r2r(rank,dims, &
        howmany_rank,howmany_dims,in,out,kind,flags)  &
+#ifdef SINGLE_PRECISION
+       bind(C, name='fftwf_plan_guru_r2r')
+#else
        bind(C, name='fftw_plan_guru_r2r')
+#endif
        import
        integer(C_INT), value :: rank
        type(fftw_iodim), dimension(*), intent(in) :: dims
        integer(C_INT), value :: howmany_rank
        type(fftw_iodim), dimension(*), intent(in) :: howmany_dims
+#ifdef SINGLE_PRECISION
+       real(C_FLOAT ), dimension(*), intent(out) :: in,out
+#else
        real(C_DOUBLE), dimension(*), intent(out) :: in,out
+#endif
        integer(C_INT) :: kind
        integer(C_INT), value :: flags
      end function fftw_plan_guru_r2r
@@ -57,7 +65,15 @@ module mod_fftw_param
   integer :: batch
   integer :: cufft_plan_fwd_x, cufft_plan_bwd_x
   integer :: cufft_plan_fwd_y, cufft_plan_bwd_y
-  complex(fp_kind),device,allocatable,dimension(:) :: cufft_workspace
+  complex(rp),device,allocatable,dimension(:) :: cufft_workspace
+  integer :: CUFFT_FWD_TYPE,CUFFT_BWD_TYPE
+#ifdef SINGLE_PRECISION
+  parameter(CUFFT_FWD_TYPE = CUFFT_R2C)
+  parameter(CUFFT_BWD_TYPE = CUFFT_C2R)
+#else
+  parameter(CUFFT_FWD_TYPE = CUFFT_D2Z)
+  parameter(CUFFT_BWD_TYPE = CUFFT_Z2D)
+#endif
 #endif
 
 end module mod_fftw_param

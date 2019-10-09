@@ -1,9 +1,11 @@
 module mod_fillps
+  use mod_types
   implicit none
   private
   public fillps
   contains
   subroutine fillps(n,dli,dzfi,dti,up,vp,wp,p)
+    !@cuf use cudafor
     !
     !  fill the right-hand side of the Poisson equation for the correction pressure.
     !
@@ -13,18 +15,18 @@ module mod_fillps
     !  ------------------- + ------------------- + -------------------  = div
     !          dz                    dy                    dx
     !
-    !@cuf use cudafor
     implicit none
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in), dimension(3) :: dli
-    real(8), intent(in), dimension(0:) :: dzfi
-    real(8), intent(in) :: dti
-    real(8), intent(in ), dimension(0:,0:,0:) :: up,vp,wp
-    real(8), intent(out), dimension(0:,0:,0:) :: p
-    real(8) :: dtidxi,dtidyi!,dtidzi
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(3) :: dli
+    real(rp), intent(in), dimension(0:) :: dzfi
+    real(rp), intent(in) :: dti
+    real(rp), intent(in ), dimension(0:,0:,0:) :: up,vp,wp
+    real(rp), intent(out), dimension(0:,0:,0:) :: p
+    real(rp) :: dtidxi,dtidyi!,dtidzi
+    !real(rp), dimension(0:n(3)+1) :: dtidzfi
 #ifdef USE_CUDA
-    attributes(managed):: up,vp,wp,p,dtidzfi,dzfi
-    integer:: istat
+    attributes(managed) :: up,vp,wp,p,dtidzfi,dzfi
+    integer :: istat
 #endif
     integer :: i,j,k,im,jm,km
     !
@@ -53,7 +55,7 @@ module mod_fillps
 #ifndef USE_CUDA
     !$OMP END PARALLEL DO
 #endif
-!@cuf istat=cudaDeviceSynchronize()
+    !@cuf istat=cudaDeviceSynchronize()
     !
     return
   end subroutine fillps

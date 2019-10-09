@@ -7,6 +7,7 @@ module mod_bound
   use cudafor
   use nvtx
 #endif
+  use mod_types
   implicit none
   private
   public boundp,bounduvw,updt_rhs_b
@@ -17,15 +18,15 @@ module mod_bound
     !
     implicit none
     character(len=1), intent(in), dimension(0:1,3,3) :: cbc
-    integer, intent(in), dimension(3) :: n 
-    real(8)         , intent(in), dimension(0:1,3,3) :: bc
-    logical, intent(in), dimension(0:1,3) :: isoutflow
-    real(8), intent(in), dimension(3) :: dl
-    real(8), intent(in), dimension(0:) :: dzc,dzf
-    real(8), intent(inout), dimension(0:,0:,0:) :: u,v,w
+    integer , intent(in), dimension(3) :: n 
+    real(rp), intent(in), dimension(0:1,3,3) :: bc
+    logical , intent(in), dimension(0:1,3) :: isoutflow
+    real(rp), intent(in), dimension(3) :: dl
+    real(rp), intent(in), dimension(0:) :: dzc,dzf
+    real(rp), intent(inout), dimension(0:,0:,0:) :: u,v,w
     integer :: q,idir,sgn,ioutflowdir
 #ifdef USE_CUDA
-    attributes(managed)::u,v,w
+    attributes(managed) :: u,v,w
 #endif
     !
     call updthalo((/n(1),n(2)/),1,u)
@@ -81,13 +82,13 @@ module mod_bound
     !
     implicit none
     character(len=1), intent(in), dimension(0:1,3) :: cbc
-    integer, intent(in), dimension(3) :: n 
-    real(8)         , intent(in), dimension(0:1,3) :: bc
-    real(8), intent(in), dimension(3) :: dl
-    real(8), intent(in), dimension(0:) :: dzc,dzf
-    real(8), intent(inout), dimension(0:,0:,0:) :: p
+    integer , intent(in), dimension(3) :: n 
+    real(rp)         , intent(in), dimension(0:1,3) :: bc
+    real(rp), intent(in), dimension(3) :: dl
+    real(rp), intent(in), dimension(0:) :: dzc,dzf
+    real(rp), intent(inout), dimension(0:,0:,0:) :: p
 #ifdef USE_CUDA
-    attributes(managed)::p
+    attributes(managed) :: p
 #endif
     !
     call updthalo((/n(1),n(2)/),1,p)
@@ -113,20 +114,20 @@ module mod_bound
   subroutine set_bc(ctype,ibound,n,idir,stag,rvalue,dr,p)
     implicit none
     character(len=1), intent(in) :: ctype
-    integer, intent(in) :: ibound,n,idir
-    logical, intent(in) :: stag
-    real(8), intent(in) :: rvalue,dr
-    real(8), intent(inout), dimension(0:,0:,0:) :: p
-    real(8) :: factor,sgn
+    integer , intent(in) :: ibound,n,idir
+    logical , intent(in) :: stag
+    real(rp), intent(in) :: rvalue,dr
+    real(rp), intent(inout), dimension(0:,0:,0:) :: p
+    real(rp) :: factor,sgn
 #ifdef USE_CUDA
-    attributes(managed):: p
-    integer::  i,j,k
+    attributes(managed) :: p
+    integer ::  i,j,k,istat
 #endif
     !
     factor = rvalue
     if(ctype.eq.'D'.and.stag) then
-      factor = 2.d0*factor
-      sgn    = -1.d0
+      factor = 2.*factor
+      sgn    = -1.
     endif
     if(ctype.eq.'N'.and.stag) then
       if(    ibound.eq.0) then
@@ -134,7 +135,7 @@ module mod_bound
       elseif(ibound.eq.1) then
         factor =  dr*factor
       endif
-      sgn    = 1.d0
+      sgn    = 1.
     endif
     !
     select case(ctype)
@@ -147,103 +148,103 @@ module mod_bound
         !p(:,0  ,:) = p(:,n,:)
         !p(:,n+1,:) = p(:,1,:)
       case(3)
-       #ifdef USE_CUDA
-       !$cuf kernel do(2) <<<*,*>>>
+        #ifdef USE_CUDA
+        !$cuf kernel do(2) <<<*,*>>>
         do j=lbound(p,2),ubound(p,2)
-         do i=lbound(p,1),ubound(p,1)
-           p(i,j,0  ) = p(i,j,n)
-           p(i,j,n+1) = p(i,j,1)
-         end do
-        end do
-       #else
+          do i=lbound(p,1),ubound(p,1)
+            p(i,j,0  ) = p(i,j,n)
+            p(i,j,n+1) = p(i,j,1)
+          enddo
+        enddo
+        #else
         !$OMP WORKSHARE
         p(:,:,0  ) = p(:,:,n)
         p(:,:,n+1) = p(:,:,1)
         !$OMP END WORKSHARE
-       #endif
+        #endif
       end select
     case('D','N')
       if(stag) then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
-                   p(0  ,j,k) = factor+sgn*p(1,j,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do j=lbound(p,2),ubound(p,2)
+                p(0  ,j,k) = factor+sgn*p(1,j,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
              p(0  ,:,:) = factor+sgn*p(1,:,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
+              do k=lbound(p,3),ubound(p,3)
+                do j=lbound(p,2),ubound(p,2)
                   p(n+1,j,k) = factor+sgn*p(n,j,k)
-                 end do
-               end do
-           #else
+                enddo
+              enddo
+            #else
             !$OMP WORKSHARE
             p(n+1,:,:) = factor+sgn*p(n,:,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           endif
         case(2)
           if    (ibound.eq.0) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,0  ,k) = factor+sgn*p(i,1,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,0  ,k) = factor+sgn*p(i,1,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,0  ,:) = factor+sgn*p(:,1,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,n+1,k) = factor+sgn*p(i,n,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,n+1,k) = factor+sgn*p(i,n,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,n+1,:) = factor+sgn*p(:,n,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           endif
         case(3)
           if    (ibound.eq.0) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,0  ) = factor+sgn*p(i,j,1)
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,0  ) = factor+sgn*p(i,j,1)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,:,0  ) = factor+sgn*p(:,:,1)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           elseif(ibound.eq.1) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,n+1) = factor+sgn*p(i,j,n)
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,n+1) = factor+sgn*p(i,j,n)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,:,n+1) = factor+sgn*p(:,:,n)
             !$OMP END WORKSHARE
@@ -254,90 +255,90 @@ module mod_bound
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
-                  p(0,j,k) = factor 
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do j=lbound(p,2),ubound(p,2)
+                p(0,j,k) = factor 
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(0,:,:) = factor 
             !$OMP END WORKSHARE
-           #endif
+            #endif
           elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
-                  p(n,j,k) = factor 
-                  p(n+1,j,k) = p(n-1,j,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do j=lbound(p,2),ubound(p,2)
+                p(n,j,k) = factor 
+                p(n+1,j,k) = p(n-1,j,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(n,:,:) = factor
+            p(n  ,:,:) = factor
             p(n+1,:,:) = p(n-1,:,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           endif
         case(2)
           if    (ibound.eq.0) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,0  ,k) = factor
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,0  ,k) = factor
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,0,:) = factor 
             !$OMP END WORKSHARE
-           #endif
+            #endif
           elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,n  ,k) = factor
-                  p(i,n+1,k) = p(i,n-1,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,n  ,k) = factor
+                p(i,n+1,k) = p(i,n-1,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(:,n,:) = factor
+            p(:,n  ,:) = factor
             p(:,n+1,:) = p(:,n-1,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
           endif
         case(3)
           if    (ibound.eq.0) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,0) = factor
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,0) = factor
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
             p(:,:,0) = factor 
             !$OMP END WORKSHARE
             #endif
           elseif(ibound.eq.1) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,n) = factor
-                 p(i,j,n+1) = p(i,j,n-1)
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,n) = factor
+                p(i,j,n+1) = p(i,j,n-1)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(:,:,n) = factor
+            p(:,:,n  ) = factor
             p(:,:,n+1) = p(:,:,n-1)
             !$OMP END WORKSHARE
             #endif
@@ -347,91 +348,97 @@ module mod_bound
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
-                  p(0,j,k) = 1.d0*factor + p(1  ,j,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do j=lbound(p,2),ubound(p,2)
+                p(0,j,k) = 1.*factor + p(1  ,j,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(0,  :,:) = 1.d0*factor + p(1  ,:,:)
-            !$OMP END WORKSHARE
-           #endif
-          elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
-            !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do j=lbound(p,2),ubound(p,2)
-                 p(n+1,j,k) = 2.d0*factor + p(n-1,j,k)
-                 end do
-               end do
-           #else
-            !$OMP WORKSHARE
-            p(n+1,:,:) = 2.d0*factor + p(n-1,:,:)
-            !$OMP END WORKSHARE
-           #endif
-          endif
-        case(2)
-          if    (ibound.eq.0) then
-           #ifdef USE_CUDA
-            !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,0  ,k) = 1.d0*factor + p(i,1  ,k) 
-                 end do
-               end do
-           #else
-            !$OMP WORKSHARE
-            p(:,0  ,:) = 1.d0*factor + p(:,1  ,:) 
+            p(0,  :,:) = 1.*factor + p(1  ,:,:)
             !$OMP END WORKSHARE
             #endif
           elseif(ibound.eq.1) then
-           #ifdef USE_CUDA
+            #ifdef USE_CUDA
             !$cuf kernel do(2) <<<*,*>>>
-               do k=lbound(p,3),ubound(p,3)
-                 do i=lbound(p,1),ubound(p,1)
-                  p(i,n+1,k) = 2.d0*factor + p(i,n-1,k)
-                 end do
-               end do
-           #else
+            do k=lbound(p,3),ubound(p,3)
+              do j=lbound(p,2),ubound(p,2)
+                p(n+1,j,k) = 2.*factor + p(n-1,j,k)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(:,n+1,:) = 2.d0*factor + p(:,n-1,:)
+            p(n+1,:,:) = 2.*factor + p(n-1,:,:)
             !$OMP END WORKSHARE
-           #endif
+            #endif
+          endif
+        case(2)
+          if    (ibound.eq.0) then
+            #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,0  ,k) = 1.*factor + p(i,1  ,k) 
+              enddo
+            enddo
+            #else
+            !$OMP WORKSHARE
+            p(:,0  ,:) = 1.*factor + p(:,1  ,:) 
+            !$OMP END WORKSHARE
+            #endif
+          elseif(ibound.eq.1) then
+            #ifdef USE_CUDA
+            !$cuf kernel do(2) <<<*,*>>>
+            do k=lbound(p,3),ubound(p,3)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,n+1,k) = 2.*factor + p(i,n-1,k)
+              enddo
+            enddo
+            #else
+            !$OMP WORKSHARE
+            p(:,n+1,:) = 2.*factor + p(:,n-1,:)
+            !$OMP END WORKSHARE
+            #endif
           endif
         case(3)
           if    (ibound.eq.0) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,0  ) = 1.d0*factor + p(i,j,1  )
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,0  ) = 1.*factor + p(i,j,1  )
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(:,:,0  ) = 1.d0*factor + p(:,:,1  )
+            p(:,:,0  ) = 1.*factor + p(:,:,1  )
             !$OMP END WORKSHARE
             #endif
           elseif(ibound.eq.1) then
             #ifdef USE_CUDA
-             !$cuf kernel do(2) <<<*,*>>>
-              do j=lbound(p,2),ubound(p,2)
-               do i=lbound(p,1),ubound(p,1)
-                 p(i,j,n+1) = 2.d0*factor + p(i,j,n-1)
-               end do
-              end do
-             #else
+            !$cuf kernel do(2) <<<*,*>>>
+            do j=lbound(p,2),ubound(p,2)
+              do i=lbound(p,1),ubound(p,1)
+                p(i,j,n+1) = 2.*factor + p(i,j,n-1)
+              enddo
+            enddo
+            #else
             !$OMP WORKSHARE
-            p(:,:,n+1) = 2.d0*factor + p(:,:,n-1)
+            p(:,:,n+1) = 2.*factor + p(:,:,n-1)
             !$OMP END WORKSHARE
             #endif
           endif
         end select
       endif
     end select
+    !
+    ! n.b. need to add this sync for pre-Pascal cards
+    !      since a managed variable will be touched 
+    !      on the host memory before synchronization
+    !
+    !@cuf istat=cudaDeviceSynchronize()
     return
   end subroutine set_bc
   !
@@ -439,11 +446,11 @@ module mod_bound
     implicit none
     integer, intent(in), dimension(3) :: n
     integer, intent(in) :: idir
-    real(8), intent(in), dimension(3) :: dl
-    real(8), intent(in), dimension(0:) :: dzf
-    real(8), dimension(0:,0:,0:), intent(inout) :: u,v,w
-    real(8) :: dx,dy,dxi,dyi
-    real(8), dimension(0:n(3)+1) :: dzfi
+    real(rp), intent(in), dimension(3) :: dl
+    real(rp), intent(in), dimension(0:) :: dzf
+    real(rp), dimension(0:,0:,0:), intent(inout) :: u,v,w
+    real(rp) :: dx,dy,dxi,dyi
+    real(rp), dimension(0:n(3)+1) :: dzfi
     integer :: i,j,k
     !
     dx   = dl(1)     
@@ -537,12 +544,12 @@ module mod_bound
     implicit none
     integer, intent(in), dimension(3) :: n
     integer, intent(in) :: idir
-    real(8), intent(in), dimension(3) :: dl
-    real(8), intent(in), dimension(0:) :: dzf
-    real(8), dimension(0:,0:), intent(in) :: vel2d
-    real(8), dimension(0:,0:,0:), intent(inout) :: u,v,w
-    real(8) :: dx,dy,dxi,dyi
-    real(8), dimension(0:n(3)+1) :: dzfi
+    real(rp), intent(in), dimension(3) :: dl
+    real(rp), intent(in), dimension(0:) :: dzf
+    real(rp), dimension(0:,0:), intent(in) :: vel2d
+    real(rp), dimension(0:,0:,0:), intent(inout) :: u,v,w
+    real(rp) :: dx,dy,dxi,dyi
+    real(rp), dimension(0:n(3)+1) :: dzfi
     integer :: i,j,k
     !
     dx   = dl(1)
@@ -584,90 +591,90 @@ module mod_bound
     implicit none
     character, intent(in), dimension(3) :: c_or_f
     character(len=1), intent(in), dimension(0:1,3) :: cbc
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in), dimension(:,:,0:) :: rhsbx,rhsby,rhsbz
-    real(8), intent(inout), dimension(0:,0:,0:) :: p
-    integer, dimension(3) :: q
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(:,:,0:) :: rhsbx,rhsby,rhsbz
+    real(rp), intent(inout), dimension(0:,0:,0:) :: p
+    integer , dimension(3) :: q
     integer :: idir
 #ifdef USE_CUDA
-    attributes(managed)::p,rhsbx,rhsby,rhsbz
-    integer:: i,j,k,indx
+    attributes(managed) :: p,rhsbx,rhsby,rhsbz
+    integer:: i,j,k,ind
 #endif
     q(:) = 0
     do idir = 1,3
       if(c_or_f(idir).eq.'f'.and.cbc(1,idir).eq.'D') q(idir) = 1
     enddo
     if(left.eq.MPI_PROC_NULL) then
-    #ifdef USE_CUDA
-     !$cuf kernel do(2) <<<*,*>>>
+      #ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
-       do j=1,n(2)
-        p(1   ,j,k) = p(1   ,j,k) + rhsbx(j,k,0)
-       end do
-      end do
-     #else
+        do j=1,n(2)
+          p(1  ,j,k) = p(1  ,j,k) + rhsbx(j,k,0)
+        enddo
+      enddo
+      #else
       !$OMP WORKSHARE
-      p(1   ,1:,1:) = p(1   ,1:,1:) + rhsbx(:,:,0)
+      p(1        ,1:n(2),1:n(3)) = p(1        ,1:n(2),1:n(3)) + rhsbx(:,:,0)
       !$OMP END WORKSHARE
-     #endif
+      #endif
     endif  
     if(right.eq.MPI_PROC_NULL) then
-    #ifdef USE_CUDA
-     indx=n(1)-q(1)
-     !$cuf kernel do(2) <<<*,*>>>
+      #ifdef USE_CUDA
+      ind=n(1)-q(1)
+      !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
-       do j=1,n(2)
-        p(indx,j,k) = p(indx,j,k) + rhsbx(j,k,1)
-       end do
-      end do
-     #else
+        do j=1,n(2)
+          p(ind,j,k) = p(ind,j,k) + rhsbx(j,k,1)
+        enddo
+      enddo
+      #else
       !$OMP WORKSHARE
-      p(n(1)-q(1),1:,1:) = p(n(1)-q(1),1:,1:) + rhsbx(:,:,1)
+      p(n(1)-q(1),1:n(2),1:n(3)) = p(n(1)-q(1),1:n(2),1:n(3)) + rhsbx(:,:,1)
       !$OMP END WORKSHARE
-     #endif
+      #endif
     endif
     if(front.eq.MPI_PROC_NULL) then
-    #ifdef USE_CUDA
-     !$cuf kernel do(2) <<<*,*>>>
+      #ifdef USE_CUDA
+      !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
-       do i=1,n(1)
-        p(i,1   ,k) = p(i,1   ,k) + rhsby(i,k,0)
-       end do
-      end do
-     #else
+        do i=1,n(1)
+          p(i,1  ,k) = p(i,1  ,k) + rhsby(i,k,0)
+        enddo
+      enddo
+      #else
       !$OMP WORKSHARE
-      p(1:,1   ,1:) = p(1:,1   ,1:) + rhsby(:,:,0)
+      p(1:n(1),1        ,1:n(3)) = p(1:n(1),1        ,1:n(3)) + rhsby(:,:,0)
       !$OMP END WORKSHARE
-     #endif
+      #endif
     endif
     if(back.eq.MPI_PROC_NULL) then
-    #ifdef USE_CUDA
-     indx=n(2)-q(2)
-     !$cuf kernel do(2) <<<*,*>>>
+      #ifdef USE_CUDA
+      ind=n(2)-q(2)
+      !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
-       do i=1,n(1)
-        p(i,indx,k) = p(i,indx,k) + rhsby(i,k,1)
-       end do
-      end do
-     #else
+        do i=1,n(1)
+          p(i,ind,k) = p(i,ind,k) + rhsby(i,k,1)
+        enddo
+      enddo
+      #else
       !$OMP WORKSHARE
-      p(1:,n(2)-q(2),1:) = p(1:,n(2)-q(2),1:) + rhsby(:,:,1)
+      p(1:n(1),n(2)-q(2),1:n(3)) = p(1:n(1),n(2)-q(2),1:n(3)) + rhsby(:,:,1)
       !$OMP END WORKSHARE
-     #endif
+      #endif
     endif
     #ifdef USE_CUDA
-     indx=n(3)-q(3)
-     !$cuf kernel do(2) <<<*,*>>>
-      do j=1,n(2)
-       do i=1,n(1)
-        p(i,j,1   ) = p(i,j,1   ) + rhsbz(i,j,0)
-        p(i,j,indx) = p(i,j,indx) + rhsbz(i,j,1)
-       end do
-      end do
-     #else
+    ind=n(3)-q(3)
+    !$cuf kernel do(2) <<<*,*>>>
+    do j=1,n(2)
+      do i=1,n(1)
+        p(i,j,1  ) = p(i,j,1  ) + rhsbz(i,j,0)
+        p(i,j,ind) = p(i,j,ind) + rhsbz(i,j,1)
+      enddo
+    enddo
+    #else
     !$OMP WORKSHARE
-    p(1:,1:,1   ) = p(1:,1:,1   ) + rhsbz(:,:,0)
-    p(1:,1:,n(3)-q(3)) = p(1:,1:,n(3)-q(3)) + rhsbz(:,:,1)
+    p(1:n(1),1:n(2),1        ) = p(1:n(1),1:n(2),1        ) + rhsbz(:,:,0)
+    p(1:n(1),1:n(2),n(3)-q(3)) = p(1:n(1),1:n(2),n(3)-q(3)) + rhsbz(:,:,1)
     !$OMP END WORKSHARE
     #endif
     return
@@ -675,14 +682,14 @@ module mod_bound
   !
   subroutine updthalo(n,idir,p)
     implicit none
-    integer, dimension(2), intent(in) :: n
-    integer, intent(in) :: idir
-    real(8), dimension(0:,0:,0:), intent(inout) :: p
+    integer , dimension(2), intent(in) :: n
+    integer , intent(in) :: idir
+    real(rp), dimension(0:,0:,0:), intent(inout) :: p
 #ifdef USE_CUDA
-    attributes(managed)::p
-    integer:: istat
+    attributes(managed) :: p
+    integer :: istat
 #endif
-    integer :: i,j,k,n_1, n_2
+    integer :: i,j,k,n_1,n_2
     !integer :: requests(4), statuses(MPI_STATUS_SIZE,4)
     !
     !  this subroutine updates the halos that store info
@@ -693,141 +700,136 @@ module mod_bound
 #endif
     select case(idir)
     case(1) ! x direction
-    !if( .false. ) then
-    if( dims(1) .eq.  1 ) then
+      !if( .false. ) then
+      if(dims(1) .eq.  1) then
 #ifdef USE_CUDA
-     n_1=n(1)
-     !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do j=lbound(p,2),ubound(p,2)
-          p(n_1+1,j,k)=p(   1,j,k)
-          p(0     ,j,k)=p(n_1,j,k)
-       end do
-      end do
+        n_1=n(1)
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=lbound(p,3),ubound(p,3)
+          do j=lbound(p,2),ubound(p,2)
+            p(n_1+1 ,j,k) = p(  1,j,k)
+            p(0     ,j,k) = p(n_1,j,k)
+          enddo
+        enddo
 #else
-    !$OMP WORKSHARE
-      p(n(1)+1,:,:)=p(   1,:,:)
-      p(0     ,:,:)=p(n(1),:,:)
-    !$OMP END WORKSHARE
+        !$OMP WORKSHARE
+        p(n(1)+1,:,:) = p(   1,:,:)
+        p(0     ,:,:) = p(n(1),:,:)
+        !$OMP END WORKSHARE
 #endif
-    else
-      n_1=n(1)
+      else
+        n_1=n(1)
 #ifdef USE_CUDA
-      !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(2) <<<*,*>>>
 #endif
-      do k=lbound(p,3),ubound(p,3)
-       do j=lbound(p,2),ubound(p,2)
-          xsl_buf(j,k)=p(  1,j,k)
-          xsr_buf(j,k)=p(n_1,j,k)
-       end do
-      end do
-      !@cuf istat = cudaDeviceSynchronize()
-
-      call MPI_SENDRECV(xsl_buf(0,0), size( xsl_buf ),MPI_REAL8,left ,0, &
-                        xrr_buf(0,0), size( xrr_buf ),MPI_REAL8,right,0, &
-                        comm_cart,status,ierr)
-
-      call MPI_SENDRECV(xsr_buf(0,0), size( xsr_buf ),MPI_REAL8,right,0, &
-                        xrl_buf(0,0), size( xrl_buf ),MPI_REAL8,left ,0, &
-                        comm_cart,status,ierr)
-
+        do k=lbound(p,3),ubound(p,3)
+          do j=lbound(p,2),ubound(p,2)
+            xsl_buf(j,k) = p(  1,j,k)
+            xsr_buf(j,k) = p(n_1,j,k)
+          enddo
+        enddo
+        !@cuf istat = cudaDeviceSynchronize()
+        !
+        call MPI_SENDRECV(xsl_buf(0,0), size( xsl_buf ),MPI_REAL_RP,left ,0, &
+                          xrr_buf(0,0), size( xrr_buf ),MPI_REAL_RP,right,0, &
+                          comm_cart,status,ierr)
+        call MPI_SENDRECV(xsr_buf(0,0), size( xsr_buf ),MPI_REAL_RP,right,0, &
+                          xrl_buf(0,0), size( xrl_buf ),MPI_REAL_RP,left ,0, &
+                          comm_cart,status,ierr)
 #ifdef USE_CUDA
-      !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(2) <<<*,*>>>
 #endif
-      do k=lbound(p,3),ubound(p,3)
-       do j=lbound(p,2),ubound(p,2)
-          p(n_1+1,j,k)=xrr_buf(j,k)
-          p(0    ,j,k)=xrl_buf(j,k)
-       end do
-      end do
-      !@cuf istat = cudaDeviceSynchronize()
-
-      !call MPI_SENDRECV(p(1     ,0,0),1,xhalo,left ,0, &
-      !                  p(n(1)+1,0,0),1,xhalo,right,0, &
-      !                  comm_cart,status,ierr)
-      !call MPI_SENDRECV(p(n(1),0,0),1,xhalo,right,0, &
-      !                  p(0   ,0,0),1,xhalo,left ,0, &
-      !                  comm_cart,status,ierr)
-         !call MPI_IRECV(p(0     ,0,0),1,xhalo,left ,1, &
-         !               comm_cart,requests(2),error)
-         !call MPI_IRECV(p(n(1)+1,0,0),1,xhalo,right,0, &
-         !               comm_cart,requests(1),error)
-         !call MPI_ISSEND(p(n(1),0,0),1,xhalo,right,1, &
-         !               comm_cart,requests(4),error)
-         !call MPI_ISSEND(p(1   ,0,0),1,xhalo,left ,0, &
-         !               comm_cart,requests(3),error)
-         !call MPI_WAITALL(4, requests, statuses, error)
-    endif
+        do k=lbound(p,3),ubound(p,3)
+          do j=lbound(p,2),ubound(p,2)
+            p(n_1+1,j,k) = xrr_buf(j,k)
+            p(0    ,j,k) = xrl_buf(j,k)
+          enddo
+        enddo
+        !@cuf istat = cudaDeviceSynchronize()
+        !
+        !call MPI_SENDRECV(p(1     ,0,0),1,xhalo,left ,0, &
+        !                  p(n(1)+1,0,0),1,xhalo,right,0, &
+        !                  comm_cart,status,ierr)
+        !call MPI_SENDRECV(p(n(1),0,0),1,xhalo,right,0, &
+        !                  p(0   ,0,0),1,xhalo,left ,0, &
+        !                  comm_cart,status,ierr)
+        !!call MPI_IRECV(p(0     ,0,0),1,xhalo,left ,1, &
+        !!               comm_cart,requests(2),error)
+        !!call MPI_IRECV(p(n(1)+1,0,0),1,xhalo,right,0, &
+        !!               comm_cart,requests(1),error)
+        !!call MPI_ISSEND(p(n(1),0,0),1,xhalo,right,1, &
+        !!               comm_cart,requests(4),error)
+        !!call MPI_ISSEND(p(1   ,0,0),1,xhalo,left ,0, &
+        !!               comm_cart,requests(3),error)
+        !!call MPI_WAITALL(4, requests, statuses, error)
+      endif
     case(2) ! y direction
-    !if( .false. ) then
-    if( dims(2) .eq.  1 ) then
+      !if( .false. ) then
+      if( dims(2) .eq.  1 ) then
 #ifdef USE_CUDA
-     n_2=n(2)
-     !$cuf kernel do(2) <<<*,*>>>
-      do k=lbound(p,3),ubound(p,3)
-       do i=lbound(p,1),ubound(p,1)
-          p(i,n_2+1,k)=p(i,  1,k)
-          p(i,    0,k)=p(i,n_2,k)
-       end do
-      end do
+        n_2=n(2)
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=lbound(p,3),ubound(p,3)
+          do i=lbound(p,1),ubound(p,1)
+            p(i,n_2+1,k) = p(i,  1,k)
+            p(i,    0,k) = p(i,n_2,k)
+          enddo
+        enddo
 #else
-    !$OMP WORKSHARE
-      p(:,n(2)+1,:)=p(:, 1,:)
-      p(:, 0     ,:)=p(:,n(2),:)
-    !$OMP END WORKSHARE
+        !$OMP WORKSHARE
+        p(:,n(2)+1,:)  = p(:, 1  ,:)
+        p(:, 0     ,:) = p(:,n(2),:)
+        !$OMP END WORKSHARE
 #endif
-    else
-      n_2=n(2)
+      else
+        n_2=n(2)
 #ifdef USE_CUDA
-      !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(2) <<<*,*>>>
 #endif
-      do k=lbound(p,3),ubound(p,3)
-       do i=lbound(p,1),ubound(p,1)
-          ysl_buf(i,k)=p(i,  1,k)
-          ysr_buf(i,k)=p(i,n_2,k)
-       end do
-      end do
-      !@cuf istat = cudaDeviceSynchronize()
-
-      call MPI_SENDRECV(ysl_buf(0,0), size( ysl_buf ),MPI_REAL8,front,0, &
-                        yrr_buf(0,0), size( yrr_buf ),MPI_REAL8,back ,0, &
-                        comm_cart,status,ierr)
-      call MPI_SENDRECV(ysr_buf(0,0), size( ysr_buf ),MPI_REAL8,back ,0, &
-                        yrl_buf(0,0), size( yrl_buf ),MPI_REAL8,front,0, &
-                        comm_cart,status,ierr)
+        do k=lbound(p,3),ubound(p,3)
+          do i=lbound(p,1),ubound(p,1)
+            ysl_buf(i,k) = p(i,  1,k)
+            ysr_buf(i,k) = p(i,n_2,k)
+          enddo
+        enddo
+        !@cuf istat = cudaDeviceSynchronize()
+        !
+        call MPI_SENDRECV(ysl_buf(0,0), size( ysl_buf ),MPI_REAL_RP,front,0, &
+                          yrr_buf(0,0), size( yrr_buf ),MPI_REAL_RP,back ,0, &
+                          comm_cart,status,ierr)
+        call MPI_SENDRECV(ysr_buf(0,0), size( ysr_buf ),MPI_REAL_RP,back ,0, &
+                          yrl_buf(0,0), size( yrl_buf ),MPI_REAL_RP,front,0, &
+                          comm_cart,status,ierr)
 #ifdef USE_CUDA
-      !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(2) <<<*,*>>>
 #endif
-      do k=lbound(p,3),ubound(p,3)
-       do i=lbound(p,1),ubound(p,1)
-          p(i,n_2+1,k)=yrr_buf(i,k)
-          p(i,    0,k)=yrl_buf(i,k)
-       end do
-      end do
-      !@cuf istat = cudaDeviceSynchronize()
-
-      !call MPI_SENDRECV(p(0,1     ,0),1,yhalo,front,0, &
-      !                  p(0,n(2)+1,0),1,yhalo,back ,0, &
-      !                  comm_cart,status,ierr)
-      !call MPI_SENDRECV(p(0,n(2),0),1,yhalo,back ,0, &
-      !                  p(0,0   ,0),1,yhalo,front,0, &
-      !                  comm_cart,status,ierr)
-         !call MPI_IRECV(p(0,n(2)+1,0),1,yhalo,back ,0, &
-         !               comm_cart,requests(1),error)
-         !call MPI_IRECV(p(0,0     ,0),1,yhalo,front,1, &
-         !               comm_cart,requests(2),error)
-         !call MPI_ISSEND(p(0,1   ,0),1,yhalo,front,0, &
-         !               comm_cart,requests(3),error)
-         !call MPI_ISSEND(p(0,n(2),0),1,yhalo,back ,1, &
-         !               comm_cart,requests(4),error)
-         !call MPI_WAITALL(4, requests, statuses, error)
-     endif
+        do k=lbound(p,3),ubound(p,3)
+          do i=lbound(p,1),ubound(p,1)
+            p(i,n_2+1,k) = yrr_buf(i,k)
+            p(i,    0,k) = yrl_buf(i,k)
+          enddo
+        enddo
+        !@cuf istat = cudaDeviceSynchronize()
+        !call MPI_SENDRECV(p(0,1     ,0),1,yhalo,front,0, &
+        !                  p(0,n(2)+1,0),1,yhalo,back ,0, &
+        !                  comm_cart,status,ierr)
+        !call MPI_SENDRECV(p(0,n(2),0),1,yhalo,back ,0, &
+        !                  p(0,0   ,0),1,yhalo,front,0, &
+        !                  comm_cart,status,ierr)
+        !!call MPI_IRECV(p(0,n(2)+1,0),1,yhalo,back ,0, &
+        !!               comm_cart,requests(1),error)
+        !!call MPI_IRECV(p(0,0     ,0),1,yhalo,front,1, &
+        !!               comm_cart,requests(2),error)
+        !!call MPI_ISSEND(p(0,1   ,0),1,yhalo,front,0, &
+        !!               comm_cart,requests(3),error)
+        !!call MPI_ISSEND(p(0,n(2),0),1,yhalo,back ,1, &
+        !!               comm_cart,requests(4),error)
+        !!call MPI_WAITALL(4, requests, statuses, error)
+      endif
     end select
-
 #ifdef USE_NVTX
       call nvtxEndRange
 #endif
-
     return
   end subroutine updthalo
 end module mod_bound

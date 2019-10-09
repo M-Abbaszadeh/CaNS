@@ -3,6 +3,7 @@ module mod_initsolver
   use mod_common_mpi, only: coord
   use mod_fft       , only: fftini
   use mod_param     , only: pi,dims
+  use mod_types
   implicit none
   private
   public initsolver
@@ -12,33 +13,33 @@ module mod_initsolver
     ! initializes the Poisson/Helmholtz solver
     !
     implicit none
-    integer, intent(in), dimension(3) :: n
-    real(8), intent(in), dimension(3) :: dli
-    real(8), intent(in), dimension(0:) :: dzci,dzfi
+    integer , intent(in), dimension(3) :: n
+    real(rp), intent(in), dimension(3) :: dli
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
     character(len=1), intent(in), dimension(0:1,3) :: cbc
-    real(8)         , intent(in), dimension(0:1,3) :: bc
+    real(rp)        , intent(in), dimension(0:1,3) :: bc
 #ifdef USE_CUDA
-    real(8), intent(out), dimension((n(1)*dims(1))/dims(2),(n(2)*dims(2))/dims(1)) :: lambdaxy
+    real(rp), intent(out), dimension((n(1)*dims(1))/dims(2),(n(2)*dims(2))/dims(1)) :: lambdaxy
     integer, dimension(3) :: nt
 #else
-    real(8), intent(out), dimension(n(1),n(2)) :: lambdaxy
+    real(rp), intent(out), dimension(n(1),n(2)) :: lambdaxy
 #endif
     character(len=1), intent(in), dimension(3) :: c_or_f
-    real(8), intent(out), dimension(n(3)) :: a,b,c
+    real(rp), intent(out), dimension(n(3)) :: a,b,c
     type(C_PTR), intent(out), dimension(2,2) :: arrplan
-    real(8), intent(out), dimension(n(2),n(3),0:1) :: rhsbx
-    real(8), intent(out), dimension(n(1),n(3),0:1) :: rhsby
-    real(8), intent(out), dimension(n(1),n(2),0:1) :: rhsbz
-    real(8), intent(out) :: normfft
-    real(8), dimension(3)        :: dl
-    real(8), dimension(0:n(3)+1) :: dzc,dzf
+    real(rp), intent(out), dimension(n(2),n(3),0:1) :: rhsbx
+    real(rp), intent(out), dimension(n(1),n(3),0:1) :: rhsby
+    real(rp), intent(out), dimension(n(1),n(2),0:1) :: rhsbz
+    real(rp), intent(out) :: normfft
+    real(rp), dimension(3)        :: dl
+    real(rp), dimension(0:n(3)+1) :: dzc,dzf
     integer :: i,j
-    real(8), dimension(n(1)*dims(1))      :: lambdax
-    real(8), dimension(n(2)*dims(2))      :: lambday
+    real(rp), dimension(n(1)*dims(1))      :: lambdax
+    real(rp), dimension(n(2)*dims(2))      :: lambday
 #ifdef USE_CUDA
 #ifdef EPHC
-    real(8), dimension(n(1)*dims(1)+2)      :: lambdax_temp
-    real(8), dimension(n(2)*dims(2)+2)      :: lambday_temp
+    real(rp), dimension(n(1)*dims(1)+2)      :: lambdax_temp
+    real(rp), dimension(n(2)*dims(2)+2)      :: lambday_temp
 #endif
 #endif
     integer, dimension(3) :: ng
@@ -56,48 +57,56 @@ module mod_initsolver
     ! add eigenvalues
     !
 #ifdef USE_CUDA
-
 #ifdef EPHC
-    !un-scramble lambday
+    ! N.B.: This re-arranging of eigenvalues is only valid for periodic BCs.
+    !
+    ! un-scramble lambday
+    !
     do i=1,ng(2)+2
-      lambday_temp(i) = 0.d0
+      lambday_temp(i) = 0.
     enddo
     do i=1,ng(2)
-      if( i .le. (ng(2)/2)+1 )  then
-        lambday_temp( 2*i - 1 ) = lambday( i )
+      if(i .le. (ng(2)/2)+1)  then
+        lambday_temp(2*i-1) = lambday(i)
       else
-        lambday_temp( 2*( i - ( ng(2)/2 ) ) ) = lambday( ng(2) - (i - (ng(2)/2 + 2)) )
+        lambday_temp(2*(i-(ng(2)/2))) = lambday(ng(2)-(i-(ng(2)/2+2)))
       endif
     enddo
-    !new format: shift to hide first imaginary element
+    !
+    ! new format: shift to hide first imaginary element
+    !
     lambday(1) = lambday_temp(1)
     do i=2,ng(2)
       lambday(i) = lambday_temp(i+1)
     enddo
-
-    !un-scramble lambdax
+    !
+    ! un-scramble lambdax
+    !
     do i=1,ng(1)+2
-      lambdax_temp(i) = 0.d0
+      lambdax_temp(i) = 0.
     enddo
     do i=1,ng(1)
-      if( i .le. (ng(1)/2)+1 )  then
-        lambdax_temp( 2*i - 1 ) = lambdax( i )
+      if(i .le. (ng(1)/2)+1)  then
+        lambdax_temp(2*i-1) = lambdax(i)
       else
-        lambdax_temp( 2*( i - ( ng(1)/2 ) ) ) = lambdax( ng(1) - (i - (ng(1)/2 + 2)) )
+        lambdax_temp(2*(i-(ng(1)/2))) = lambdax(ng(1)-(i-(ng(1)/2+2)))
       endif
     enddo
-    !new format: shift to hide first imaginary element
+    !
+    ! new format: shift to hide first imaginary element
+    !
     lambdax(1) = lambdax_temp(1)
     do i=2,ng(1)
       lambdax(i) = lambdax_temp(i+1)
     enddo
 #endif
-
-    !use new z pencils
+    !
+    ! use new z pencils
+    !
     nt(1) = ng(1)/dims(2)
     nt(2) = ng(2)/dims(1)
     nt(3) = ng(3)
-
+    !
     do j=1,nt(2)
       jj = coord(1)*nt(2)+j
       do i=1,nt(1)
@@ -140,44 +149,39 @@ module mod_initsolver
   !
   subroutine eigenvalues(n,bc,c_or_f,lambda)
     implicit none
-    integer, intent(in ) :: n
+    integer , intent(in ) :: n
     character(len=1), intent(in), dimension(0:1) :: bc
     character(len=1), intent(in) :: c_or_f ! c -> cell-centered; f -> face-centered
-    real(8), intent(out), dimension(n) :: lambda
+    real(rp), intent(out), dimension(n) :: lambda
     integer :: l 
     select case(bc(0)//bc(1))
     case('PP')
-      l = 1
-      lambda(l)     = -4.d0*sin((1.d0*(l-1))*pi/(1.d0*n))**2
-      do l=2,n/2
-        lambda(l  )   = -4.d0*sin((1.d0*(l-1))*pi/(1.d0*n))**2
-        lambda(n-l+2) = lambda(l) ! according to the half-complex format of fftw
+      do l=1,n
+        lambda(l  )   = -4.*sin((1.*(l-1))*pi/(1.*n))**2
       enddo
-      l = n/2+1
-      lambda(l)    = -4.d0*sin((1.d0*(l-1))*pi/(1.d0*n))**2
     case('NN')
       if(    c_or_f.eq.'c') then
         do l=1,n
-          lambda(l)   = -4.d0*sin((1.d0*(l-1))*pi/(2.d0*n))**2
+          lambda(l)   = -4.*sin((1.*(l-1))*pi/(2.*n))**2
         enddo
       elseif(c_or_f.eq.'f') then
         do l=1,n
-          lambda(l)   = -4.d0*sin((1.d0*(l-1))*pi/(2.d0*(n-1+1)))**2
+          lambda(l)   = -4.*sin((1.*(l-1))*pi/(2.*(n-1+1)))**2
         enddo
       endif
     case('DD')
       if(    c_or_f.eq.'c') then
         do l=1,n
-          lambda(l)   = -4.d0*sin((1.d0*(l-0))*pi/(2.d0*n))**2
+          lambda(l)   = -4.*sin((1.*(l-0))*pi/(2.*n))**2
         enddo
       elseif(c_or_f.eq.'f') then
         do l=1,n-1 ! point at n is a boundary and is excluded here
-          lambda(l)   = -4.d0*sin((1.d0*(l-0))*pi/(2.d0*(n+1-1)))**2
+          lambda(l)   = -4.*sin((1.*(l-0))*pi/(2.*(n+1-1)))**2
         enddo
       endif
     case('ND')
       do l=1,n
-        lambda(l)   = -4.d0*sin((1.d0*(2*l-1))*pi/(4.d0*n))**2
+        lambda(l)   = -4.*sin((1.*(2*l-1))*pi/(4.*n))**2
       enddo
     end select   
     return
@@ -185,16 +189,16 @@ module mod_initsolver
   !
   subroutine tridmatrix(bc,n,dzi,dzci,dzfi,c_or_f,a,b,c)
     implicit none
-    real(8), parameter :: eps = 1.d-10
+    real(rp), parameter :: eps = epsilon(1._rp)*10.
     character(len=1), intent(in), dimension(0:1) :: bc
-    integer, intent(in) :: n
-    real(8), intent(in) :: dzi
-    real(8), intent(in), dimension(0:) :: dzci,dzfi
+    integer , intent(in) :: n
+    real(rp), intent(in) :: dzi
+    real(rp), intent(in), dimension(0:) :: dzci,dzfi
     character(len=1), intent(in) :: c_or_f ! c -> cell-centered; f-face-centered
-    real(8), intent(out), dimension(n) :: a,b,c
+    real(rp), intent(out), dimension(n) :: a,b,c
     integer :: k
     integer :: ibound
-    real(8), dimension(0:1) :: factor
+    real(rp), dimension(0:1) :: factor
     select case(c_or_f)
     case('c')
       do k=1,n
@@ -211,11 +215,11 @@ module mod_initsolver
     do ibound = 0,1
       select case(bc(ibound))
       case('P')
-        factor(ibound) = 0.d0
+        factor(ibound) = 0.
       case('D')
-        factor(ibound) = -1.d0
+        factor(ibound) = -1.
       case('N')
-        factor(ibound) = 1.d0
+        factor(ibound) = 1.
       end select
     enddo
     select case(c_or_f)
@@ -229,22 +233,22 @@ module mod_initsolver
     ! n.b.: a(1) and c(n) not set to zero here;
     !       the values are not used in the solver unless
     !       the direction is periodic
-    a(:) = a(:) + eps
-    b(:) = b(:) + eps
-    c(:) = c(:) + eps
+    a(:) = a(:)! + eps
+    b(:) = b(:)! + eps
+    c(:) = c(:)! + eps
     return
   end subroutine tridmatrix
   !
   subroutine bc_rhs(cbc,n,bc,dlc,dlf,c_or_f,rhs)
     implicit none
     character(len=1), intent(in), dimension(0:1) :: cbc
-    integer, intent(in) :: n
-    real(8), intent(in), dimension(0:1) :: bc
-    real(8), intent(in), dimension(0:1) :: dlc,dlf
-    real(8), intent(out), dimension(:,:,0:) :: rhs
+    integer , intent(in) :: n
+    real(rp), intent(in), dimension(0:1) :: bc
+    real(rp), intent(in), dimension(0:1) :: dlc,dlf
+    real(rp), intent(out), dimension(:,:,0:) :: rhs
     character(len=1), intent(in) :: c_or_f ! c -> cell-centered; f -> face-centered
-    real(8), dimension(0:1) :: factor
-    real(8) :: sgn
+    real(rp), dimension(0:1) :: factor
+    real(rp) :: sgn
     integer :: ibound
     !
     select case(c_or_f)
@@ -252,12 +256,12 @@ module mod_initsolver
       do ibound = 0,1
         select case(cbc(ibound))
         case('P')
-          factor(ibound) = 0.d0
+          factor(ibound) = 0.
         case('D')
-          factor(ibound) = -2.d0*bc(ibound)
+          factor(ibound) = -2.*bc(ibound)
         case('N')
-          if(ibound.eq.0) sgn =  1.d0
-          if(ibound.eq.1) sgn = -1.d0
+          if(ibound.eq.0) sgn =  1.
+          if(ibound.eq.1) sgn = -1.
           factor(ibound) = sgn*dlc(ibound)*bc(ibound)
         end select
       enddo
@@ -265,12 +269,12 @@ module mod_initsolver
       do ibound = 0,1
         select case(cbc(ibound))
         case('P')
-          factor(ibound) = 0.d0
+          factor(ibound) = 0.
         case('D')
           factor(ibound) = -bc(ibound)
         case('N')
-          if(ibound.eq.0) sgn =  1.d0
-          if(ibound.eq.1) sgn = -1.d0
+          if(ibound.eq.0) sgn =  1.
+          if(ibound.eq.1) sgn = -1.
           factor(ibound) = sgn*dlf(ibound)*bc(ibound)
         end select
       enddo

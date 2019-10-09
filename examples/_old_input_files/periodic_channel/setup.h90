@@ -23,9 +23,13 @@
    !      = 'log' --> logarithmic profile + noise           (u->streamwise velocity in x dir)
    !      = 'hcl' --> half channel with log profile + noise (u->streamwise velocity in x dir)
    !      = 'hcp' --> half channel with poiseuille profile  (u->streamwise velocity in x dir)
-   character(len=3), parameter :: inivel = 'cou'
+   !      = 'tgv' --> Taylor-Green vortex
+   character(len=3), parameter :: inivel = 'log'
    !
-   integer, parameter :: nstep = 20000 ! number of time steps
+   ! is_wallturb: if .true., generates an initial condition that triggers transition to turbulence in wall-bounded flows (assumes streamwise direction x)
+   logical, parameter :: is_wallturb = .false.
+   !
+   integer, parameter :: nstep = 100000 ! number of time steps
    logical, parameter :: restart = .false. ! restart or not from a checkpoint
    !
    ! -> every *icheck* time steps compute the new time step size dt

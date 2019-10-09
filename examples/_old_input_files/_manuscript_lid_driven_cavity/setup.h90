@@ -1,7 +1,7 @@
    ! total number of points in x, y and z
-   integer, parameter :: itot = 64, jtot = 64, ktot = 64
+   integer, parameter :: itot = 128, jtot = 128, ktot = 128
    ! domain length in x, y and z
-   real(8), parameter :: lx = 3.d0, ly = 1.5d0, lz = 1.d0
+   real(8), parameter :: lx = 1.d0, ly = 1.0d0, lz = 1.d0
    real(8), parameter :: dx = lx/(1.d0*itot), & ! grid parameters
                          dy = ly/(1.d0*jtot), &
                          dz = lz/(1.d0*ktot), &
@@ -23,9 +23,13 @@
    !      = 'log' --> logarithmic profile + noise           (u->streamwise velocity in x dir)
    !      = 'hcl' --> half channel with log profile + noise (u->streamwise velocity in x dir)
    !      = 'hcp' --> half channel with poiseuille profile  (u->streamwise velocity in x dir)
-   character(len=3), parameter :: inivel = 'log'
+   !      = 'tgv' --> Taylor-Green vortex
+   character(len=3), parameter :: inivel = 'zer'
    !
-   integer, parameter :: nstep = 10 ! number of time steps
+   ! is_wallturb: if .true., generates an initial condition that triggers transition to turbulence in wall-bounded flows (assumes streamwise direction x)
+   logical, parameter :: is_wallturb = .false.
+   !
+   integer, parameter :: nstep = 10000 ! number of time steps
    logical, parameter :: restart = .false. ! restart or not from a checkpoint
    !
    ! -> every *icheck* time steps compute the new time step size dt
@@ -41,14 +45,13 @@
    ! main.f90 or even output.f90 accordingly. Currently these assume the z to be
    ! an inhomogeneous direction.
    !
-   integer, parameter :: icheck =   10, iout0d =    10, iout1d =   10, &
-                         iout2d = 5000, iout3d = 10000, isave  = 2000
-
-   ! NOTE: grid dimensions now set dynamically, rather than at compile time.
+   integer, parameter :: icheck =  10, iout0d =   10, iout1d =  100, &
+                         iout2d = 500, iout3d = 1000, isave  = 2000
+   !
    ! grid of computational subdomains
-   !integer, parameter, dimension(2) :: dims = (/2,2/)
+   integer, parameter, dimension(2) :: dims = (/2,2/)
    ! x and y sizes of local arrays in the basic 2D z-pencil decomposition
-   !integer, parameter :: imax = itot/dims(1), jmax = jtot/dims(2)
+   integer, parameter :: imax = itot/dims(1), jmax = jtot/dims(2)
    !
    ! number of OpenMP threads
    integer, parameter :: nthreadsmax = 4

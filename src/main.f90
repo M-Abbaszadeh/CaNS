@@ -38,7 +38,7 @@ program cans
   use mod_load       , only: load
   use mod_rk         , only: rk,rk_id
   use mod_output     , only: out0d,out1d,out1d_2,out2d,out3d
-  use mod_param      , only: itot,jtot,ktot,lx,ly,lz,dx,dy,dz,dxi,dyi,dzi,visc,small, &
+  use mod_param      , only: itot,jtot,ktot,lx,ly,lz,dx,dy,dz,dxi,dyi,dzi,uref,lref,rey,visc,small, &
                              cbcvel,bcvel,cbcpre,bcpre, &
                              icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                              nstep,restart, &
@@ -46,13 +46,15 @@ program cans
                              datadir, &
                              cfl,     &
                              inivel,  &
-                             uref,lref, &
                              imax,jmax,dims, &
                              nthreadsmax, &
                              gr, &
-                             is_outflow,no_outflow,is_forced
+                             is_outflow,no_outflow,is_forced, &
+                             n,ng,l,dl,dli, &
+                             read_input
   use mod_sanity     , only: test_sanity
   use mod_solver     , only: solver
+  use mod_types
 #ifdef USE_CUDA
   use mod_common_mpi, only: mydev
 #endif
@@ -61,110 +63,150 @@ program cans
 #endif 
   !$ use omp_lib
   implicit none
-  integer, dimension(3) :: n
-  !integer, parameter, dimension(3) :: n  = (/imax,jmax,ktot/)
-  integer, parameter, dimension(3) :: ng = (/itot,jtot,ktot/)
-  real(8), parameter, dimension(3) :: l   = (/lx,ly,lz/)
-  real(8), parameter, dimension(3) :: dl  = (/dx,dy,dz/)
-  real(8), parameter, dimension(3) :: dli = (/dxi,dyi,dzi/)
-  !real(8), dimension(0:imax+1,0:jmax+1,0:ktot+1) :: u,v,w,p,up,vp,wp,pp
-  real(8), dimension(:,:,:),allocatable :: u,v,w,p,up,vp,wp,pp
+  real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,up,vp,wp,pp
 #ifdef USE_CUDA
-  attributes(managed):: u,v,w,p,up,vp,wp,pp
+  attributes(managed) :: u,v,w,p,up,vp,wp,pp
 #endif
-  !real(8), dimension(imax,jmax,ktot)    :: dudtrko,dvdtrko,dwdtrko
-  real(8), dimension(:,:,:),allocatable, target  :: dudtrk_A,dvdtrk_A,dwdtrk_A
-  real(8), dimension(:,:,:),allocatable, target  :: dudtrk_B,dvdtrk_B,dwdtrk_B
-  real(8), dimension(:,:,:), pointer :: dudtrko,dvdtrko,dwdtrko
-  real(8), dimension(:,:,:), pointer :: dudtrk,dvdtrk,dwdtrk, rk_tmp
-  real(8), dimension(3) :: tauxo,tauyo,tauzo
-  real(8), dimension(3) :: f
+  real(rp), dimension(:,:,:), allocatable, target  :: dudtrk_A,dvdtrk_A,dwdtrk_A
+  real(rp), dimension(:,:,:), allocatable, target  :: dudtrk_B,dvdtrk_B,dwdtrk_B
+  real(rp), dimension(:,:,:), pointer :: dudtrko,dvdtrko,dwdtrko
+  real(rp), dimension(:,:,:), pointer :: dudtrk,dvdtrk,dwdtrk, rk_tmp
+  real(rp), dimension(3) :: tauxo,tauyo,tauzo
+  real(rp), dimension(3) :: f
   type(C_PTR), dimension(2,2) :: arrplanp
-  !real(8), dimension(imax,jmax) :: lambdaxyp
-  real(8), dimension(:,:),allocatable :: lambdaxyp
-  !real(8), dimension(ktot) :: ap,bp,cp
-  real(8), dimension(:),allocatable :: ap,bp,cp
-  real(8) :: normfftp
+  real(rp), allocatable, dimension(:,:) :: lambdaxyp
+  real(rp), allocatable, dimension(:) :: ap,bp,cp
+  real(rp) :: normfftp
+  integer  :: i,j,k,im,ip,jm,jp,km,kp
   type rhs_bound
-    !real(8), dimension(n(2),n(3),0:1) :: x
-    !real(8), dimension(n(1),n(3),0:1) :: y
-    !real(8), dimension(n(1),n(2),0:1) :: z
 #ifdef USE_CUDA
-    real(8), dimension(:,:,:),allocatable,managed :: x,y,z
+    real(rp), allocatable, dimension(:,:,:), managed :: x,y,z
 #else
-    real(8), dimension(:,:,:),allocatable :: x,y,z
+    real(rp), allocatable, dimension(:,:,:) :: x,y,z
 #endif
   end type rhs_bound 
-  integer :: i,j,k,im,ip,jm,jp,km,kp
+  type(rhs_bound), allocatable :: rhsbp
 #ifdef IMPDIFF
   type(C_PTR), dimension(2,2) :: arrplanu,arrplanv,arrplanw
-  real(8), dimension(:,:),allocatable :: lambdaxyu,lambdaxyv,lambdaxyw
-  real(8), dimension(:)  ,allocatable :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
-  real(8) :: normfftu,normfftv,normfftw
-  real(8) :: alpha,alphai
+  real(rp), dimension(:,:), allocatable :: lambdaxyu,lambdaxyv,lambdaxyw
+  real(rp), dimension(:)  , allocatable :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
+  real(rp) :: normfftu,normfftv,normfftw
+  real(rp) :: alpha,alphai
   type(rhs_bound), allocatable :: rhsbu,rhsbv,rhsbw
-  real(8), dimension(:,:,:),allocatable    :: dudtrkd,dvdtrkd,dwdtrkd
+  real(rp), dimension(:,:,:), allocatable    :: dudtrkd,dvdtrkd,dwdtrkd
   #ifdef USE_CUDA
-  attributes(managed):: dudtrkd,dvdtrkd,dwdtrkd,lambdaxyu,lambdaxyv,lambdaxyw
-  attributes(managed):: au,av,aw,bu,bv,bw,bb,cu,cv,cw
-  attributes(managed):: rhsbu,rhsbv,rhsbw
+  attributes(managed) :: dudtrkd,dvdtrkd,dwdtrkd,lambdaxyu,lambdaxyv,lambdaxyw
+  attributes(managed) :: au,av,aw,bu,bv,bw,bb,cu,cv,cw
+  attributes(managed) :: rhsbu,rhsbv,rhsbw
   #endif
 #endif
-  type(rhs_bound), allocatable :: rhsbp
-  real(8) :: ristep
-  real(8) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
-  integer :: irk,istep
-  !real(8), dimension(0:ktot+1) :: dzc,dzf,zc,zf,dzci,dzfi
-  real(8), dimension(:),allocatable :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi
+  real(rp) :: ristep
+  real(rp) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
+  integer  :: irk,istep
+  real(rp), allocatable, dimension(:) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi
 #ifdef USE_CUDA
   integer :: istat
-  integer(kind=cuda_count_kind):: freeMem,totMem
-  integer(8):: totEle
-  attributes(managed):: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,dudtrk_A,dvdtrk_A,dwdtrk_A,lambdaxyp,ap,bp,cp,rhsbp
-  attributes(managed):: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_B,dvdtrk_B,dwdtrk_B
+  integer(kind=cuda_count_kind) :: freeMem,totMem
+  integer(8) :: totEle
+  attributes(managed) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,dudtrk_A,dvdtrk_A,dwdtrk_A,lambdaxyp,ap,bp,cp,rhsbp
+  attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_B,dvdtrk_B,dwdtrk_B
 #endif
-  real(8) :: meanvel
-  real(8), dimension(3) :: dpdl
-  !real(8), allocatable, dimension(:) :: var
-  real(8), dimension(10) :: var
+  real(rp) :: meanvel
+  real(rp), dimension(3) :: dpdl
+  !real(rp), allocatable, dimension(:) :: var
+  real(rp), dimension(10) :: var
 #ifdef TIMING
-  real(8) :: dt12,dt12av,dt12min,dt12max
+  real(rp) :: dt12,dt12av,dt12min,dt12max
 #endif
-  real(8):: f1d,f2d,f3d
+  real(rp) :: f1d,f2d,f3d
   character(len=7) :: fldnum
   integer :: lenr,kk
   logical :: kill
   !
+  call MPI_INIT(ierr)
+  call MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
+  !
+  ! read parameter file
+  !
+  call read_input(myid)
+  !
+  ! initialize MPI/OpenMP
+  !
   !$call omp_set_num_threads(nthreadsmax)
   call initmpi(ng,cbcpre)
-
-  ! imax and jmax set in initmpi now. Set n array here.
-  n  = (/imax,jmax,ktot/)
-
-!
-! Allocate memory.
-!
+  n  = (/imax,jmax,ktot/) ! now set in initmpi
+  !
+  ! allocate memory
+  !
   dudtrko => dudtrk_A
   dvdtrko => dvdtrk_A
   dwdtrko => dwdtrk_A
-  dudtrk => dudtrk_B
-  dvdtrk => dudtrk_B
-  dwdtrk => dudtrk_B
+  dudtrk  => dudtrk_B
+  dvdtrk  => dudtrk_B
+  dwdtrk  => dudtrk_B
+  !
+  allocate(u( 0:n(1)+1,0:n(2)+1,0:n(3)+1) , &
+           v( 0:n(1)+1,0:n(2)+1,0:n(3)+1) , &
+           w( 0:n(1)+1,0:n(2)+1,0:n(3)+1) , &
+           p( 0:n(1)+1,0:n(2)+1,0:n(3)+1) , &
+           up(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           vp(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           wp(0:n(1)+1,0:n(2)+1,0:n(3)+1), &
+           pp(0:n(1)+1,0:n(2)+1,0:n(3)+1))
+  allocate(dudtrko(n(1),n(2),n(3)), &
+           dvdtrko(n(1),n(2),n(3)), &
+           dwdtrko(n(1),n(2),n(3)), &
+           dudtrk( n(1),n(2),n(3)), &
+           dvdtrk( n(1),n(2),n(3)), &
+           dwdtrk( n(1),n(2),n(3)))
 
-  allocate( u(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate( v(0:imax+1,0:jmax+1,0:ktot+1))
-  allocate( w(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate( p(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(up(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(vp(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(wp(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(pp(0:imax+1,0:jmax+1,0:ktot+1)) 
-  allocate(dudtrko(imax,jmax,ktot))
-  allocate(dvdtrko(imax,jmax,ktot))
-  allocate(dwdtrko(imax,jmax,ktot))
-  allocate(dudtrk(imax,jmax,ktot))
-  allocate(dvdtrk(imax,jmax,ktot))
-  allocate(dwdtrk(imax,jmax,ktot))
+#ifdef USE_CUDA
+  allocate(lambdaxyp(ng(1)/dims(2),ng(2)/dims(1)))
+#else
+  allocate(lambdaxyp(n(1),n(2)))
+#endif
+  allocate(ap(n(3)),bp(n(3)),cp(n(3)))
+  allocate(dzc(   0:n(3)+1), &
+           dzf(   0:n(3)+1), &
+           zc(    0:n(3)+1), &
+           zf(    0:n(3)+1), &
+           dzci(  0:n(3)+1), &
+           dzfi(  0:n(3)+1), &
+           dzclzi(0:n(3)+1), &
+           dzflzi(0:n(3)+1), &
+           zclzi( 0:n(3)+1))
+  allocate(rhsbp)
+  allocate(rhsbp%x(n(2),n(3),0:1), &
+           rhsbp%y(n(1),n(3),0:1), &
+           rhsbp%z(n(1),n(2),0:1))
+#ifdef IMPDIFF
+  allocate(dudtrkd(n(1),n(2),n(3)), &
+           dvdtrkd(n(1),n(2),n(3)), & 
+           dwdtrkd(n(1),n(2),n(3)))
+#ifdef USE_CUDA
+  allocate(lambdaxyu(ng(1)/dims(2),ng(2)/dims(1)), &
+           lambdaxyv(ng(1)/dims(2),ng(2)/dims(1)), &
+           lambdaxyw(ng(1)/dims(2),ng(2)/dims(1)))
+#else
+  allocate(lambdaxyu(n(1),n(2)), &
+           lambdaxyv(n(1),n(2)), &
+           lambdaxyw(n(1),n(2)))
+#endif
+  allocate(au(n(3)),bu(n(3)),cu(n(3)), &
+           av(n(3)),bv(n(3)),cv(n(3)), &
+           aw(n(3)),bw(n(3)),cw(n(3)), &
+           bb(n(3)))
+  allocate(rhsbu,rhsbv,rhsbw)
+  allocate(rhsbu%x(n(2),n(3),0:1), &
+           rhsbu%y(n(1),n(3),0:1), &
+           rhsbu%z(n(1),n(2),0:1), &
+           rhsbv%x(n(2),n(3),0:1), &
+           rhsbv%y(n(1),n(3),0:1), &
+           rhsbv%z(n(1),n(2),0:1), &
+           rhsbw%x(n(2),n(3),0:1), &
+           rhsbw%y(n(1),n(3),0:1), &
+           rhsbw%z(n(1),n(2),0:1))
+#endif
 
 #ifdef USE_CUDA
   istat = cudaMemAdvise( u, size(u), cudaMemAdviseSetPreferredLocation, mydev )
@@ -181,7 +223,6 @@ program cans
   istat = cudaMemAdvise( dudtrk, size(dudtrk), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemAdvise( dvdtrk, size(dvdtrk), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemAdvise( dwdtrk, size(dwdtrk), cudaMemAdviseSetPreferredLocation, mydev )
-
   istat = cudaMemPrefetchAsync( u, size(u), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( v, size(v), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( w, size(w), cudaCpuDeviceId, 0 )
@@ -196,75 +237,14 @@ program cans
   istat = cudaMemPrefetchAsync( dudtrk, size(dudtrk), mydev, 0 )
   istat = cudaMemPrefetchAsync( dvdtrk, size(dvdtrk), mydev, 0 )
   istat = cudaMemPrefetchAsync( dwdtrk, size(dwdtrk), mydev, 0 )
-#endif
-
-#ifdef IMPDIFF
-  allocate(dudtrkd(imax,jmax,ktot))    
-  allocate(dvdtrkd(imax,jmax,ktot))   
-  allocate(dwdtrkd(imax,jmax,ktot))    
-
-  allocate(rhsbu,rhsbv,rhsbw)
-  allocate(rhsbu%x(n(2),n(3),0:1))
-  allocate(rhsbu%y(n(1),n(3),0:1))
-  allocate(rhsbu%z(n(1),n(2),0:1))
-  allocate(rhsbv%x(n(2),n(3),0:1))
-  allocate(rhsbv%y(n(1),n(3),0:1))
-  allocate(rhsbv%z(n(1),n(2),0:1))
-  allocate(rhsbw%x(n(2),n(3),0:1))
-  allocate(rhsbw%y(n(1),n(3),0:1))
-  allocate(rhsbw%z(n(1),n(2),0:1))
-#ifdef USE_CUDA
-  allocate(lambdaxyu(itot/dims(2),jtot/dims(1)))
-  allocate(lambdaxyv(itot/dims(2),jtot/dims(1)))
-  allocate(lambdaxyw(itot/dims(2),jtot/dims(1)))
-#else
-  allocate(lambdaxyu(imax,jmax))
-  allocate(lambdaxyv(imax,jmax))
-  allocate(lambdaxyw(imax,jmax))
-#endif
-  allocate(au(ktot)) 
-  allocate(bu(ktot))
-  allocate(cu(ktot)) 
-  allocate(av(ktot)) 
-  allocate(bv(ktot))
-  allocate(cv(ktot)) 
-  allocate(aw(ktot)) 
-  allocate(bw(ktot))
-  allocate(cw(ktot)) 
-  allocate(bb(ktot))
-#endif
-
-  allocate(rhsbp)
-  allocate(rhsbp%x(n(2),n(3),0:1))
-  allocate(rhsbp%y(n(1),n(3),0:1))
-  allocate(rhsbp%z(n(1),n(2),0:1))
-#ifdef USE_CUDA
-  allocate(lambdaxyp(itot/dims(2),jtot/dims(1)))
-#else
-  allocate(lambdaxyp(imax,jmax))
-#endif
-  allocate(ap(ktot))
-  allocate(bp(ktot))
-  allocate(cp(ktot))
-
-  allocate( dzc(0:ktot+1))
-  allocate( dzf(0:ktot+1))
-  allocate ( zc(0:ktot+1))
-  allocate(  zf(0:ktot+1))
-  allocate(dzci(0:ktot+1))
-  allocate(dzfi(0:ktot+1))
-  allocate(dzflzi(0:ktot+1))
-  allocate(dzclzi(0:ktot+1))
-  allocate(zclzi(0:ktot+1))
-
-#ifdef USE_CUDA
+  !
   istat = cudaMemAdvise( rhsbp%x, size(rhsbp%x), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemAdvise( rhsbp%y, size(rhsbp%y), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemAdvise( rhsbp%z, size(rhsbp%z), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemPrefetchAsync( rhsbp%x, size(rhsbp%x), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( rhsbp%y, size(rhsbp%y), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( rhsbp%z, size(rhsbp%z), cudaCpuDeviceId, 0 )
-
+  !
   istat = cudaMemAdvise( zc, size(zc), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( zf, size(zf), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( dzc, size(dzc), cudaMemAdviseSetReadMostly, 0 )
@@ -275,34 +255,31 @@ program cans
   istat = cudaMemAdvise( dzflzi, size(dzflzi), cudaMemAdviseSetReadMostly, 0 )
   istat = cudaMemAdvise( zclzi, size(zclzi), cudaMemAdviseSetReadMostly, 0 )
 #endif
-
-!!!!!!!!!
-  if(myid.eq.0) print*, '******************************'
+  if(myid.eq.0) print*, '*******************************'
   if(myid.eq.0) print*, '*** Beginning of simulation ***'
-  if(myid.eq.0) print*, '******************************'
+  if(myid.eq.0) print*, '*******************************'
   if(myid.eq.0) print*, ''
-
 #ifdef USE_CUDA
   if(myid.eq.0) then 
-      print*, ' GPU accelerated version, grid size:',n(1)*dims(1),n(2)*dims(2),n(3)
-      #ifndef IMPDIFF
-      totEle=(8*int((imax+2)*(jmax+2)*(ktot+2),8) + 6*int(n(1)*n(2)*n(3),8) + 6*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
-      #else
-      totEle=(8*int((imax+2)*(jmax+2)*(ktot+2),8) + 9*int(n(1)*n(2)*n(3),8) +24*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
-      #endif
-      totEle = totEle+ int((n(1)*dims(1)*n(2)*dims(2)/dims(1)*n(3)/dims(2)),8) + &
-                       int((n(1)*n(2)*dims(2)*n(3)/dims(2)),8) + int(n(1)*n(2)*ng(3),8) + &
-                       int((n(1)*dims(1)+2)* n(2)*dims(2)/dims(1)* n(3)/dims(2),8) +  &
-                       int((n(2)*dims(2)+2)* n(1)* n(3)/dims(2) , 8 ) + &
-                       int(n(2)*dims(2)* n(1)* n(3)/dims(2), 8 ) 
-      print*, ' Estimated Memory usage (GB) per MPI task: ',totEle*8./(1024.**3)
-      ! Missing fft plan
-      istat=cudaMemGetInfo(freeMem,totMem)
-      print *," Memory on GPU (GB)                      : ",totMem/(1024.**3)
-      print *," "
+    print*, ' GPU accelerated version, grid size:',n(1)*dims(1),n(2)*dims(2),n(3)
+    #ifndef IMPDIFF
+    totEle=(8*int((n(1)+2)*(n(2)+2)*(n(3)+2),8) + 6*int(n(1)*n(2)*n(3),8) + 6*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
+    #else
+    totEle=(8*int((n(1)+2)*(n(2)+2)*(n(3)+2),8) + 9*int(n(1)*n(2)*n(3),8) +24*(n(1)*n(2)+n(2)*n(3)+n(1)*n(3)) )
+    #endif
+    totEle = totEle+ int((n(1)*dims(1)*n(2)*dims(2)/dims(1)*n(3)/dims(2)),8) + &
+                     int((n(1)*n(2)*dims(2)*n(3)/dims(2)),8) + int(n(1)*n(2)*ng(3),8) + &
+                     int((n(1)*dims(1)+2)* n(2)*dims(2)/dims(1)* n(3)/dims(2),8) +  &
+                     int((n(2)*dims(2)+2)* n(1)* n(3)/dims(2) , 8 ) + &
+                     int(n(2)*dims(2)* n(1)* n(3)/dims(2), 8 ) 
+    print*, ' Estimated Memory usage (GB) per MPI task: ',totEle*sizeof(1._rp)/(1024.**3)
+    ! missing fft plan
+    istat=cudaMemGetInfo(freeMem,totMem)
+    print *," Memory on GPU (GB)                      : ",totMem/(1024.**3)
+    print *," "
   endif
 #endif 
-
+  !
 #ifdef USE_NVTX
   call nvtxStartRange("initgrid", 2)
 #endif
@@ -329,10 +306,27 @@ program cans
     close(99)
     open(99,file=trim(datadir)//'grid.out')
     do kk=0,ktot+1
-      write(99,'(5E15.7)') 0.d0,zf(kk),zc(kk),dzf(kk),dzc(kk)
+      write(99,'(5E15.7)') 0.,zf(kk),zc(kk),dzf(kk),dzc(kk)
     enddo
     close(99)
   endif
+#ifdef USE_CUDA
+  istat = cudaMemPrefetchAsync( dzci, size(dzci), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzfi, size(dzfi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzflzi, size(dzflzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( dzclzi, size(dzclzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( zclzi, size(zclzi), mydev, 0 )
+  istat = cudaMemPrefetchAsync( zc, size(zc), mydev, 0 )
+  !$cuf kernel do(1) <<<*,*>>>
+#endif
+  do k=0,ktot+1
+     dzci(k)=1./dzc(k)
+     dzfi(k)=1./dzf(k)
+     dzflzi(k)=dzf(k)/lz
+     dzclzi(k)=dzc(k)/lz
+     zclzi(k)=zc(k)/lz
+  enddo
+  !@cuf istat=cudaDeviceSynchronize()
   !
   ! test input files before proceeding with the calculation
   !
@@ -345,24 +339,12 @@ program cans
   call nvtxEndRange
 #endif
   !
-#ifdef USE_CUDA
-  istat = cudaMemPrefetchAsync( dzci, size(dzci), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dzfi, size(dzfi), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dzflzi, size(dzflzi), mydev, 0 )
-  istat = cudaMemPrefetchAsync( dzclzi, size(dzclzi), mydev, 0 )
-  istat = cudaMemPrefetchAsync( zclzi, size(zclzi), mydev, 0 )
-  istat = cudaMemPrefetchAsync( zc, size(zc), mydev, 0 )
-  !$cuf kernel do(1) <<<*,*>>>
+  if(.not.restart) then
+    istep = 0
+    time = 0.
+#ifdef USE_NVTX
+    call nvtxStartRange("initflow", 4)
 #endif
-  do k=0,ktot+1
-     dzci(k)=1.d0/dzc(k)
-     dzfi(k)=1.d0/dzf(k)
-     dzflzi(k)=dzf(k)/lz
-     dzclzi(k)=dzc(k)/lz
-     zclzi(k)=zc(k)/lz
-  enddo
-  !@cuf istat=cudaDeviceSynchronize()
-
 #ifdef USE_CUDA
   istat = cudaMemPrefetchAsync( dzci, size(dzci), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( dzfi, size(dzfi), cudaCpuDeviceId, 0 )
@@ -370,16 +352,9 @@ program cans
   istat = cudaMemPrefetchAsync( dzclzi, size(dzclzi), cudaCpuDeviceId, 0 )
   istat = cudaMemPrefetchAsync( zclzi, size(zclzi), cudaCpuDeviceId, 0 )
 #endif
-
-  if(.not.restart) then
-    istep = 0
-    time = 0.d0
+  call initflow(inivel,n,zclzi,dzclzi,dzflzi,visc,u,v,w,p)
 #ifdef USE_NVTX
-      call nvtxStartRange("initflow", 4)
-#endif
-    call initflow(inivel,n,zclzi,dzclzi,dzflzi,visc,uref,u,v,w,p)
-#ifdef USE_NVTX
-      call nvtxEndRange
+  call nvtxEndRange
 #endif
     if(myid.eq.0) print*, '*** Initial condition succesfully set ***'
   else
@@ -399,16 +374,34 @@ program cans
 #endif
   call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
+  !
+  ! post-process and write initial condition
+  !
+  write(fldnum,'(i7.7)') istep
+  include 'out1d.h90'
+  include 'out2d.h90'
+  include 'out3d.h90'
+  !$cuf kernel do(3) <<<*,*>>> 
+  do k=1,n(3)
+    do j=1,n(2)
+      do i=1,n(3)
+        dudtrko(i,j,k) = 0.
+        dvdtrko(i,j,k) = 0.
+        dwdtrko(i,j,k) = 0.
+      enddo
+    enddo
+  enddo
+  !@cuf istat=cudaDeviceSynchronize()
 #ifdef USE_NVTX
-      call nvtxStartRange("chkdt", 1)
+  call nvtxStartRange("chkdt", 1)
 #endif
   call chkdt(n,dl,dzci,dzfi,visc,u,v,w,dtmax)
 #ifdef USE_NVTX
-      call nvtxEndRange
+  call nvtxEndRange
 #endif
   dt = cfl*dtmax
   if(myid.eq.0) print*, 'dtmax = ', dtmax, 'dt = ',dt
-  dti = 1.d0/dt
+  dti = 1./dt
   kill = .false.
   !
   ! initialize Poisson solver
@@ -427,39 +420,34 @@ program cans
   call initsolver(n,dli,dzci,dzfi,cbcvel(:,:,3),bcvel(:,:,3),lambdaxyw,(/'c','c','f'/),aw,bw,cw,arrplanw,normfftw, &
                   rhsbw%x,rhsbw%y,rhsbw%z)
 #endif
-
   !
   ! main loop
   !
   if(myid.eq.0) print*, '*** Calculation loop starts now ***'
   do while(istep.lt.nstep)
-
- #ifdef USE_NVTX
-      call nvtxStartRange("timestep", istep)
- #endif
-
+#ifdef USE_NVTX
+    call nvtxStartRange("timestep", istep)
+#endif
 #ifdef TIMING
     dt12 = MPI_WTIME()
 #endif
     istep = istep + 1
     time = time + dt
     if(myid.eq.0) print*, 'Timestep #', istep, 'Time = ', time
-    dpdl(:)  = 0.d0
-    tauxo(:) = 0.d0
-    tauyo(:) = 0.d0
-    tauzo(:) = 0.d0
+    dpdl(:)  = 0.
+    tauxo(:) = 0.
+    tauyo(:) = 0.
+    tauzo(:) = 0.
     do irk=1,3
       dtrk = sum(rkcoeff(:,irk))*dt
-      dtrki = 1.d0/dtrk
+      dtrki = 1./dtrk
 #ifndef IMPDIFF
-
       #ifdef USE_NVTX
       call nvtxStartRange("rk", irk)
       #endif
       call rk(rkcoeff(:,irk),n,dli,dzci,dzfi,dzflzi,dzclzi,visc,dt,l, &
               u,v,w,p,dudtrk,dvdtrk,dwdtrk, &
               dudtrko,dvdtrko,dwdtrko,tauxo,tauyo,tauzo,up,vp,wp,f)
-
       !swap d*dtrk <=> d*dtrko (saves data movement)
       rk_tmp  => dudtrk
       dudtrk  => dudtrko
@@ -470,13 +458,10 @@ program cans
       rk_tmp  => dwdtrk
       dwdtrk  => dwdtrko
       dwdtrko => rk_tmp
-
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
-
 #else
-
       #ifdef USE_NVTX
       call nvtxStartRange("rk_id", irk)
       #endif
@@ -486,77 +471,71 @@ program cans
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
-
 #endif
       #ifdef USE_NVTX
       call nvtxStartRange("is_forced", irk+1)
       #endif
       if(is_forced(1)) then
-      f1d=f(1)
-      !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)
-        do j=1,n(2)
-         do i=1,n(1)
-           up(i,j,k) = up(i,j,k) + f1d
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
-      end if
-
+        f1d=f(1)
+        !$cuf kernel do(3) <<<*,*>>> 
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,n(1)
+              up(i,j,k) = up(i,j,k) + f1d
+            enddo
+          enddo
+        enddo
+        !@cuf istat=cudaDeviceSynchronize()
+      endif
       if(is_forced(2)) then
-      f2d=f(2)
-      !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)
-        do j=1,n(2)
-         do i=1,n(1)
-           vp(i,j,k) = vp(i,j,k) + f2d
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
-      end if
-
+        f2d=f(2)
+        !$cuf kernel do(3) <<<*,*>>> 
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,n(1)
+              vp(i,j,k) = vp(i,j,k) + f2d
+            enddo
+          enddo
+        enddo
+        !@cuf istat=cudaDeviceSynchronize()
+      endif
       if(is_forced(3)) then
-      !$cuf kernel do(3) <<<*,*>>> 
-      f3d=f(3)
-       do k=1,n(3)
-        do j=1,n(2)
-         do i=1,n(1)
-           wp(i,j,k) = wp(i,j,k) + f3d
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
-      end if
+        !$cuf kernel do(3) <<<*,*>>> 
+        f3d=f(3)
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,n(1)
+              wp(i,j,k) = wp(i,j,k) + f3d
+            enddo
+          enddo
+        enddo
+        !@cuf istat=cudaDeviceSynchronize()
+      endif
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
-
 #ifdef IMPDIFF
-      alpha = -1.d0/(.5d0*visc*dtrk)
+      alpha = -1./(.5*visc*dtrk)
       #ifdef USE_CUDA
       !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)
+      do k=1,n(3)
         do j=1,n(2)
-         do i=1,n(1)
-           up(i,j,k) = up(i,j,k) *alpha
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
+          do i=1,n(1)
+            up(i,j,k) = up(i,j,k) *alpha
+          enddo
+        enddo
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #else
       !$OMP WORKSHARE
       up(1:n(1),1:n(2),1:n(3)) = up(1:n(1),1:n(2),1:n(3))*alpha
       !$OMP END WORKSHARE
       #endif
-      
       !$cuf kernel do(1) <<<*,*>>> 
       do k=1,ktot
-       bb(k) = bu(k) + alpha
-      end do 
-  !@cuf istat=cudaDeviceSynchronize()
-
+        bb(k) = bu(k) + alpha
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #ifdef USE_NVTX
       call nvtxStartRange("solver_u", irk+3)
       #endif
@@ -567,14 +546,14 @@ program cans
       #endif
       #ifdef USE_CUDA
       !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)
+      do k=1,n(3)
         do j=1,n(2)
-         do i=1,n(1)
-           vp(i,j,k) = vp(i,j,k) *alpha
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
+          do i=1,n(1)
+            vp(i,j,k) = vp(i,j,k) *alpha
+          enddo
+        enddo
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #else
       !$OMP WORKSHARE
       vp(1:n(1),1:n(2),1:n(3)) = vp(1:n(1),1:n(2),1:n(3))*alpha
@@ -582,10 +561,9 @@ program cans
       #endif
       !$cuf kernel do(1) <<<*,*>>> 
       do k=1,ktot
-       bb(k) = bv(k) + alpha
-      end do 
-  !@cuf istat=cudaDeviceSynchronize()
-
+        bb(k) = bv(k) + alpha
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #ifdef USE_NVTX
       call nvtxStartRange("solver_v", irk+4)
       #endif
@@ -596,14 +574,14 @@ program cans
       #endif
       #ifdef USE_CUDA
       !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)
+      do k=1,n(3)
         do j=1,n(2)
-         do i=1,n(1)
-           wp(i,j,k) = wp(i,j,k) *alpha
-        end do
-        end do
-       end do
-  !@cuf istat=cudaDeviceSynchronize()
+          do i=1,n(1)
+            wp(i,j,k) = wp(i,j,k) *alpha
+          enddo
+        enddo
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #else
       !$OMP WORKSHARE
       wp(1:n(1),1:n(2),1:n(3)) = wp(1:n(1),1:n(2),1:n(3))*alpha
@@ -611,10 +589,9 @@ program cans
       #endif
       !$cuf kernel do(1) <<<*,*>>> 
       do k=1,ktot
-       bb(k) = bw(k) + alpha
-      end do 
-  !@cuf istat=cudaDeviceSynchronize()
-
+        bb(k) = bw(k) + alpha
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
       #ifdef USE_NVTX
       call nvtxStartRange("solver_w", irk+5)
       #endif
@@ -645,7 +622,6 @@ program cans
       call nvtxEndRange
       #endif
 #endif
-
       #ifdef USE_NVTX
       call nvtxStartRange("bounduvw", irk+5)
       #endif
@@ -664,7 +640,6 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
       #endif
-      !call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp(1:n(1),1:n(2),1:n(3)))
       call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp)
       #ifdef USE_NVTX
       call nvtxEndRange
@@ -684,7 +659,6 @@ program cans
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
-
 #ifdef IMPDIFF
       alphai = alpha**(-1)
       #ifdef USE_CUDA
@@ -692,7 +666,7 @@ program cans
       #else
       !$OMP PARALLEL DO DEFAULT(none) &
       !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
-      !$OMP SHARED(p,pp,dzfi,dzci,alphai)
+      !$OMP SHARED(n,p,pp,dxi,dyi,dzfi,dzci,alphai)
       #endif
       do k=1,n(3)
         kp = k + 1
@@ -704,35 +678,33 @@ program cans
             ip = i + 1
             im = i - 1
             p(i,j,k) = p(i,j,k) + pp(i,j,k) + alphai*( &
-                        (pp(ip,j,k)-2.d0*pp(i,j,k)+pp(im,j,k))*(dxi**2) + &
-                        (pp(i,jp,k)-2.d0*pp(i,j,k)+pp(i,jm,k))*(dyi**2) + &
+                        (pp(ip,j,k)-2.*pp(i,j,k)+pp(im,j,k))*(dxi**2) + &
+                        (pp(i,jp,k)-2.*pp(i,j,k)+pp(i,jm,k))*(dyi**2) + &
                         ((pp(i,j,kp)-pp(i,j,k ))*dzci(k ) - &
                          (pp(i,j,k )-pp(i,j,km))*dzci(km))*dzfi(k) )
           enddo
         enddo
       enddo
-    #ifndef USE_CUDA
-    !$OMP END PARALLEL DO
-     #endif
-    !@cuf istat=cudaDeviceSynchronize()
+      #ifndef USE_CUDA
+      !$OMP END PARALLEL DO
+      #endif
+      !@cuf istat=cudaDeviceSynchronize()
 #else
-
-     #ifdef USE_CUDA
-     !$cuf kernel do(3) <<<*,*>>> 
-       do k=1,n(3)    
+      #ifdef USE_CUDA
+      !$cuf kernel do(3) <<<*,*>>> 
+      do k=1,n(3)    
         do j=1,n(2)
-         do i=1,n(1)
-           p(i,j,k) = p(i,j,k) + pp(i,j,k)  
-        end do
-        end do
-       end do
-     !@cuf istat=cudaDeviceSynchronize()
-     #else
+          do i=1,n(1)
+            p(i,j,k) = p(i,j,k) + pp(i,j,k)  
+          enddo
+        enddo
+      enddo
+      !@cuf istat=cudaDeviceSynchronize()
+      #else
       !$OMP WORKSHARE
       p(1:n(1),1:n(2),1:n(3)) = p(1:n(1),1:n(2),1:n(3)) + pp(1:n(1),1:n(2),1:n(3))
       !$OMP END WORKSHARE
-     #endif 
-
+      #endif 
 #endif
       #ifdef USE_NVTX
       call nvtxStartRange("boundp", irk+9)
@@ -750,15 +722,15 @@ program cans
       if(myid.eq.0) print*, 'dtmax = ', dtmax, 'dt = ',dt
       if(dtmax.lt.small) then
         if(myid.eq.0) print*, 'ERROR: timestep is too small.'
-        if(myid.eq.0) print*, 'Aborting ...'
+        if(myid.eq.0) print*, 'Aborting...'
         istep = nstep + 1 ! i.e. exit main loop
         kill = .true.
       endif
-      dti = 1.d0/dt
+      dti = 1./dt
       call chkdiv(n,dli,dzfi,u,v,w,divtot,divmax)
       if(divmax.gt.small.or.divtot.ne.divtot) then
         if(myid.eq.0) print*, 'ERROR: maximum divergence is too large.'
-        if(myid.eq.0) print*, 'Aborting ...'
+        if(myid.eq.0) print*, 'Aborting...'
         istep = nstep + 1 ! i.e. exit main loop
         kill = .true.
       endif
@@ -768,7 +740,7 @@ program cans
     !
     if(mod(istep,iout0d).eq.0) then
       !allocate(var(4))
-      var(1) = 1.d0*istep
+      var(1) = 1.*istep
       var(2) = dt
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
@@ -790,25 +762,25 @@ program cans
       include 'out3d.h90'
     endif
     if(mod(istep,isave ).eq.0) then
-      ristep = 1.d0*istep
+      ristep = 1.*istep
       call load('w',trim(datadir)//'fld.bin',n,u(1:n(1),1:n(2),1:n(3)), &
                                                v(1:n(1),1:n(2),1:n(3)), &
                                                w(1:n(1),1:n(2),1:n(3)), &
                                                p(1:n(1),1:n(2),1:n(3)), &
                                                time,ristep)
-    if(myid.eq.0) print*, '*** Checkpoint saved at time = ', time, 'time step = ', istep, '. ***'
+      if(myid.eq.0) print*, '*** Checkpoint saved at time = ', time, 'time step = ', istep, '. ***'
     endif
 #ifdef TIMING
       dt12 = MPI_WTIME()-dt12
-      call MPI_ALLREDUCE(dt12,dt12av ,1,MPI_REAL8,MPI_SUM,MPI_COMM_WORLD,ierr)
-      call MPI_ALLREDUCE(dt12,dt12min,1,MPI_REAL8,MPI_MIN,MPI_COMM_WORLD,ierr)
-      call MPI_ALLREDUCE(dt12,dt12max,1,MPI_REAL8,MPI_MAX,MPI_COMM_WORLD,ierr)
+      call MPI_ALLREDUCE(dt12,dt12av ,1,MPI_REAL_RP,MPI_SUM,MPI_COMM_WORLD,ierr)
+      call MPI_ALLREDUCE(dt12,dt12min,1,MPI_REAL_RP,MPI_MIN,MPI_COMM_WORLD,ierr)
+      call MPI_ALLREDUCE(dt12,dt12max,1,MPI_REAL_RP,MPI_MAX,MPI_COMM_WORLD,ierr)
       if(myid.eq.0) print*, 'Avrg, min & max elapsed time: '
-      if(myid.eq.0) print*, dt12av/(1.d0*product(dims)),dt12min,dt12max
+      if(myid.eq.0) print*, dt12av/(1.*product(dims)),dt12min,dt12max
 #endif
- #ifdef USE_NVTX
+#ifdef USE_NVTX
       call nvtxEndRange
- #endif
+#endif
   enddo
   !
   ! clear ffts
@@ -819,27 +791,25 @@ program cans
   call fftend(arrplanv)
   call fftend(arrplanw)
 #endif
-!
-! Deallocate memory.
-!
-  deallocate( u,v,w,p,up,vp,wp,pp)
+  !
+  ! deallocate memory
+  !
+  deallocate(u,v,w,p,up,vp,wp,pp)
   deallocate(dudtrko,dvdtrko,dwdtrko)
   deallocate(dudtrk,dvdtrk,dwdtrk)
+  deallocate(lambdaxyp)
+  deallocate(ap,bp,cp)
+  deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
 #ifdef IMPDIFF
   deallocate(dudtrkd,dvdtrkd,dwdtrkd)
-  deallocate(rhsbu%x,rhsbu%y,rhsbu%z)
-  deallocate(rhsbv%x,rhsbv%y,rhsbv%z)
-  deallocate(rhsbw%x,rhsbw%y,rhsbw%z)
   deallocate(lambdaxyu,lambdaxyv,lambdaxyw)
-  deallocate(au,bu,cu)
-  deallocate(av,bv,cv)
-  deallocate(aw,bw,cw)
-  deallocate(bb)
+  deallocate(au,bu,cu,av,bv,cv,aw,bw,cw,bb)
+  deallocate(rhsbu%x,rhsbu%y,rhsbu%z, &
+             rhsbv%x,rhsbv%y,rhsbv%z, &
+             rhsbw%x,rhsbw%y,rhsbw%z)
 #endif
-  deallocate(rhsbp%x,rhsbp%y,rhsbp%z)
-  deallocate(lambdaxyp,ap,bp,cp)
-  deallocate(dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi)
-
+  deallocate(dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi)
+  !
   if(myid.eq.0.and.(.not.kill)) print*, '*** Fim ***'
   call decomp_2d_finalize
   call MPI_FINALIZE(ierr)
