@@ -7,6 +7,9 @@ module mod_fft
   !$ use omp_lib
   private
   public fftini,fftend,fft
+#ifdef USE_CUDA
+  public fftf_gpu,fftb_gpu
+#endif
   contains
   subroutine fftini(nx,ny,nz,bcxy,c_or_f,arrplan,normfft)
     implicit none
@@ -168,6 +171,33 @@ module mod_fft
 #endif
     return
   end subroutine fft
+  !
+  subroutine fftf_gpu(plan,arrin,arrout)
+    implicit none
+    integer , intent(in) :: plan 
+    real(rp), intent(in ), dimension(:,:,:), device :: arrin
+    real(rp), intent(out), dimension(:,:,:), device :: arrout
+    integer :: istat
+#ifdef SINGLE_PRECISION
+    istat = cufftExecR2C(plan,arrin,arrout)
+#else
+    istat = cufftExecD2Z(plan,arrin,arrout)
+#endif
+    return
+  end subroutine fftf_gpu
+  subroutine fftb_gpu(plan,arrin,arrout)
+    implicit none
+    integer , intent(in) :: plan 
+    real(rp), intent(in ), dimension(:,:,:), device :: arrin
+    real(rp), intent(out), dimension(:,:,:), device :: arrout
+    integer :: istat
+#ifdef SINGLE_PRECISION
+    istat = cufftExecC2R(plan,arrin,arrout)
+#else
+    istat = cufftExecZ2D(plan,arrin,arrout)
+#endif
+    return
+  end subroutine fftb_gpu
   !
   subroutine find_fft(bc,c_or_f,kind_fwd,kind_bwd,norm)
   implicit none

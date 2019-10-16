@@ -7,6 +7,7 @@ module mod_solver
 #ifdef USE_CUDA
   use cudafor
   use mod_fftw_param
+  use mod_fft,        only: fftf_gpu,fftb_gpu
   use mod_common_mpi, only: mydev
 #endif
   implicit none
@@ -96,11 +97,7 @@ module mod_solver
         enddo
       enddo
     enddo
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_y, py_t, pyc_t)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
-#endif
+    call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
     !
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
@@ -118,11 +115,7 @@ module mod_solver
     !
     !call transpose_y_to_x(py,px)
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_x, px, pxc)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-#endif
+    call fftf_gpu(cufft_plan_fwd_x, px, pxc)
     !
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
@@ -164,11 +157,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_x, pxc, px)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
-#endif
+    call fftb_gpu(cufft_plan_bwd_x, pxc, px)
     !
     !call transpose_x_to_y(px,py)
     !
@@ -186,11 +175,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_y, pyc_t, py_t)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
-#endif
+    call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
     !
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)
@@ -211,11 +196,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_x, px, pxc)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-#endif
+    call fftf_gpu(cufft_plan_fwd_x, px, pxc)
     !
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)/dims(2)
@@ -230,11 +211,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_y, py_t, pyc_t)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
-#endif
+    call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
     !
     ng2 = ng(2)
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
@@ -272,11 +249,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_y, pyc_t, py_t)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
-#endif
+    call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
     !
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
@@ -292,11 +265,7 @@ module mod_solver
       enddo
     enddo
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_x, pxc, px)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
-#endif
+    call fftb_gpu(cufft_plan_bwd_x, pxc, px)
     !
     !$cuf kernel do(3) <<<*,*>>>
     do k=lbound(pz,3),ubound(pz,3)
@@ -339,11 +308,7 @@ module mod_solver
     enddo
 #endif
     !
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_y, py_t, pyc_t)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_y, py_t, pyc_t)
-#endif
+    call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
     !
 #ifdef EPHC
 #ifndef EPHC
@@ -388,11 +353,7 @@ module mod_solver
 #endif
     !
 #ifdef USE_CUDA
-#ifdef SINGLE_PRECISION
-    istat = cufftExecR2C(cufft_plan_fwd_x, px, pxc)
-#else
-    istat = cufftExecD2Z(cufft_plan_fwd_x, px, pxc)
-#endif
+    call fftf_gpu(cufft_plan_fwd_x, px, pxc)
     !
 #ifdef EPHC
 #ifndef EPHC
@@ -508,11 +469,7 @@ module mod_solver
       enddo
     enddo
 #endif
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_x, pxc, px)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_x, pxc, px)
-#endif
+    call fftb_gpu(cufft_plan_bwd_x, pxc, px)
     !
 #else
     call fft(arrplan(2,1),px) ! bwd transform in x
@@ -566,11 +523,7 @@ module mod_solver
       enddo
     enddo
 #endif
-#ifdef SINGLE_PRECISION
-    istat = cufftExecC2R(cufft_plan_bwd_y, pyc_t, py_t)
-#else
-    istat = cufftExecZ2D(cufft_plan_bwd_y, pyc_t, py_t)
-#endif
+    call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
     !
 #ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
