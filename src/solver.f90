@@ -16,11 +16,7 @@ module mod_solver
   real(rp), allocatable, dimension(:,:,:) :: pw
   attributes(managed) :: px,py,pz,pw
   real(rp), allocatable, dimension(:,:,:), device :: py_t
-#ifdef EPHC
   real(rp), allocatable, dimension(:,:,:), device :: pxc, pyc_t
-#else
-  complex(rp), allocatable, dimension(:,:,:), device :: pxc, pyc_t
-#endif
 #endif
   private
   public solver
@@ -60,13 +56,8 @@ module mod_solver
     if ( .not. allocated(pz) ) allocate(pz(ng(1)/dims(1),ng(2)/dims(2),ng(3)))
 #ifdef USE_CUDA
     if ( .not. allocated(pw) ) allocate(pw(ng(1)/dims(2),ng(2)/dims(1),ng(3)))
-#ifdef EPHC
     if ( .not. allocated(pxc  )) allocate( pxc( 2*(ng(1)/2 + 1), ng(2)/dims(1), ng(3)/dims(2) ) )
     if ( .not. allocated(pyc_t)) allocate( pyc_t( 2*(ng(2)/2 + 1), ng(1)/dims(1), ng(3)/dims(2) ) )
-#else
-    if ( .not. allocated(pxc  )) allocate( pxc( ng(1)/2 + 1, ng(2)/dims(1), ng(3)/dims(2) ) )
-    if ( .not. allocated(pyc_t)) allocate( pyc_t( ng(2)/2 + 1, ng(1)/dims(1), ng(3)/dims(2) ) )
-#endif
     if ( .not. allocated(py_t )) then
       allocate( py_t( ng(2), ng(1)/dims(1), ng(3)/dims(2) ) )
       istat = cudaMemAdvise( px, size(px), cudaMemAdviseSetPreferredLocation, mydev )
@@ -85,201 +76,131 @@ module mod_solver
     endif
 #endif
     !
-#ifdef EPHC
-    if(dims(1) * dims(2) .eq. 1) then
-#define Y_B4_X
-#ifdef Y_B4_X
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=1,ng(2)
-          py_t(i,j,k) = p(j,i,k)
+#ifdef USE_CUDA
+    if(product(dims(:)).eq.1) then
+      !
+      ! transpose to have y values in the leading dimention
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(1)/dims(1)
+          do i=1,ng(2)
+            py_t(i,j,k) = p(j,i,k)
+          enddo
         enddo
       enddo
-    enddo
-    call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
-    !
-    ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do i=1,ng(2)
+      !
+      call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
+      !
+      ! convert format
+      !
+      ng2 = ng(2)
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,ng(3)/dims(2)
         do j=1,ng(1)/dims(1)
-          if( i .eq. 1 ) then
+          pyc_t(2,j,k) = pyc_t(ng2+1,j,k)
+        enddo
+      enddo
+      !
+      ! transpose to have x values in the leading dimention
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)/dims(2)
+        do i=1,ng(2)
+          do j=1,ng(1)/dims(1)
             px(j,i,k) = pyc_t(i,j,k)
-          else
-            px(j,i,k) = pyc_t(i+1,j,k)
-          endif
+          enddo
         enddo
       enddo
-    enddo
-    !
-    !call transpose_y_to_x(py,px)
-    !
-    call fftf_gpu(cufft_plan_fwd_x, px, pxc)
-    !
-    ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=1,ng(1)
-          if( i .eq. 1)  then
+      !
+      call fftf_gpu(cufft_plan_fwd_x, px, pxc)
+      !
+      ! convert format
+      !
+      ng1 = ng(1)
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(2)/dims(1)
+          pxc(2,j,k) = pxc(ng1+1,j,k)
+        enddo
+      enddo
+      !
+      ! dummy operation
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(2)/dims(1)
+          do i=1,ng(1)
             pw(i,j,k) = pxc(i,j,k)
-          else
-            pw(i,j,k) = pxc(i+1,j,k)
-          endif
+          enddo
         enddo
       enddo
-    enddo
-    !
-    !call transpose_x_to_z(px,pw)
-    !
-    q = 0
-    if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
-    if(bcz(0)//bcz(1).eq.'PP') then
-      call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
-    else
-      call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
-    endif
-    !
-    !call transpose_z_to_x(pw,px)
-    !
-    ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=1,ng(1)
-          if( i .eq. 1)  then
+      !
+      q = 0
+      if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
+      if(bcz(0)//bcz(1).eq.'PP') then
+        call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
+      else
+        call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
+      endif
+      !
+      ! dummy operation
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(2)/dims(1)
+          do i=1,ng(1)
             pxc(i,j,k) = pw(i,j,k)
-          else
-            pxc(i+1,j,k) = pw(i,j,k)
-          endif
+          enddo
         enddo
       enddo
-    enddo
-    !
-    call fftb_gpu(cufft_plan_bwd_x, pxc, px)
-    !
-    !call transpose_x_to_y(px,py)
-    !
-    ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=1,ng(2)
-          if( i .eq. 1 ) then
-            pyc_t(i,j,k) = px(j,i,k)
-          else
-            pyc_t(i+1,j,k) = px(j,i,k)
-          endif
+      !
+      ! convert format
+      !
+      ng1 = ng(1)
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(2)/dims(1)
+          pxc(ng1+1,j,k) = pxc(2,j,k)
+          pxc(2    ,j,k) = 0.
         enddo
       enddo
-    enddo
-    !
-    call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
-    !
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)
-      do j=1,ng(2)/dims(2)
-        do i=1,ng(1)/dims(1)
-          p(i,j,k) = py_t(j,i,k)*normfft
-        enddo
-      enddo
-    enddo
-#else
-    ! X first then Y (not as fast as Y first)
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=1,ng(1)
-          px(i,j,k) = p(i,j,k)
-        enddo
-      enddo
-    enddo
-    !
-    call fftf_gpu(cufft_plan_fwd_x, px, pxc)
-    !
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=1,ng(2)
-          if(j .eq. 1) then
-            py_t(i,j,k) = pxc(j,i,k)
-          else
-            py_t(i,j,k) = pxc(j+1,i,k)
-          endif
-        enddo
-      enddo
-    enddo
-    !
-    call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
-    !
-    ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do i=1,ng(2)
+      !
+      call fftb_gpu(cufft_plan_bwd_x, pxc, px)
+      !
+      ! transpose to have y values in the leading dimention
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)/dims(2)
         do j=1,ng(1)/dims(1)
-          if( i .eq. 1 ) then
-            pw(j,i,k) = pyc_t(i,j,k)
-          else
-            pw(j,i,k) = pyc_t(i+1,j,k)
-          endif
+          do i=1,ng(2)
+            pyc_t(i,j,k) = px(j,i,k)
+          enddo
         enddo
       enddo
-    enddo
-    !
-    q = 0
-    if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
-    if(bcz(0)//bcz(1).eq.'PP') then
-      call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
-    else
-      call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
-    endif
-    !
-    ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=1,ng(2)
-          if( i .eq. 1 ) then
-            pyc_t(i,j,k) = pw(j,i,k)
-          else
-            pyc_t(i+1,j,k) = pw(j,i,k)
-          endif
+      ng2 = ng(2)
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,ng(3)/dims(2)
+        do j=1,ng(1)/dims(1)
+          pyc_t(ng2+1,j,k) = pyc_t(2,j,k)
+          pyc_t(2    ,j,k) = 0.
         enddo
       enddo
-    enddo
-    !
-    call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
-    !
-    ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,(8,8,8)>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=1,ng(1)
-          if( i .eq. 1)  then
-            pxc(i,j,k) = py_t(j,i,k)
-          else
-            pxc(i+1,j,k) = py_t(j,i,k)
-          endif
+      !
+      call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
+      !
+      ! transpose to have x values in the leading dimention
+      !
+      !$cuf kernel do(3) <<<*,(8,8,8)>>>
+      do k=1,ng(3)
+        do j=1,ng(2)/dims(2)
+          do i=1,ng(1)/dims(1)
+            p(i,j,k) = py_t(j,i,k)*normfft
+          enddo
         enddo
       enddo
-    enddo
-    !
-    call fftb_gpu(cufft_plan_bwd_x, pxc, px)
-    !
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=lbound(pz,3),ubound(pz,3)
-      do j=lbound(pz,2),ubound(pz,2)
-        do i=lbound(pz,1),ubound(pz,1)
-          p(i,j,k) = px(i,j,k)*normfft
-        enddo
-      enddo
-    enddo
-    !
-#endif
     else ! if single rank
 #endif
-#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -292,12 +213,8 @@ module mod_solver
     enddo
     !
     call transpose_z_to_y(pz,py)
-#else
-    call transpose_zp_to_yt( pz, py, p, py_t )
-#endif
     !
 #ifdef USE_CUDA
-#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(1)/dims(1)
@@ -306,101 +223,60 @@ module mod_solver
         enddo
       enddo
     enddo
-#endif
     !
     call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
     !
-#ifdef EPHC
-#ifndef EPHC
+    ! convert format
+    !
     ng2 = ng(2)
+    !$cuf kernel do(2) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+      do j=1,ng(1)/dims(1)
+        pyc_t(2,j,k) = pyc_t(ng2+1,j,k)
+      enddo
+    enddo
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)/dims(2)
       do i=1,ng(2)
         do j=1,ng(1)/dims(1)
-          if( i .eq. 1 ) then
-            py(j,i,k) = pyc_t(i,j,k)
-          else
-            py(j,i,k) = pyc_t(i+1,j,k)
-          endif
+          py(j,i,k) = pyc_t(i,j,k)
         enddo
       enddo
     enddo
-#endif
-#else
-    ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=1,ng(2)
-          if( i .le. (ng2/2)+1 )  then
-            py(j,i,k) = REAL( pyc_t(i,j,k) )
-          else
-            py( j, ng2 - (i - (ng2/2 + 2)),k) = AIMAG( pyc_t(i-(ng2/2),j,k) )
-          endif
-        enddo
-      enddo
-    enddo
-#endif
     !
 #else
     call fft(arrplan(1,2),py) ! fwd transform in y
 #endif
     !
-#ifdef EPHC
-    call transpose_yct_to_x(py,px,pyc_t)
-#else
     call transpose_y_to_x(py,px)
-#endif
     !
 #ifdef USE_CUDA
     call fftf_gpu(cufft_plan_fwd_x, px, pxc)
     !
-#ifdef EPHC
-#ifndef EPHC
+    ! convert format
+    !
     ng1 = ng(1)
+    !$cuf kernel do(2) <<<*,*>>>
+    do k=1,ng(3)/dims(2)
+      do j=1,ng(2)/dims(1)
+        pxc(2,j,k) = pxc(ng1+1,j,k)
+      enddo
+    enddo
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(2)/dims(1)
         do i=1,ng(1)
-          if( i .eq. 1)  then
-            px(i,j,k) = pxc(i,j,k)
-          else
-            px(i,j,k) = pxc(i+1,j,k)
-          endif
+          px(i,j,k) = pxc(i,j,k)
         enddo
       enddo
     enddo
-#endif
-#else
-    ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=1,ng(1)
-          if( i .le. (ng1/2)+1 )  then
-            px(i,j,k) = REAL(pxc(i,j,k))
-          else
-            px( ng1 - (i - (ng1/2 + 2)),j,k) = AIMAG(pxc(i-(ng1/2),j,k))
-          endif
-        enddo
-      enddo
-    enddo
-#endif
     !
 #else
     call fft(arrplan(1,1),px) ! fwd transform in x
 #endif
     !
 #ifdef USE_CUDA
-#ifdef EPHC
-    call transpose_xc_to_z(px,pw,pxc)
-#else
     call transpose_x_to_z(px,pw)
-#endif
-#else
-    ! TBD: replace the two transposes below with transpose_x_to_z
-    call transpose_x_to_y(px,py)
-    call transpose_y_to_z(py,pz)
 #endif
     !
     q = 0
@@ -420,112 +296,56 @@ module mod_solver
     endif
     !
 #ifdef USE_CUDA
-#ifdef EPHC
-    call transpose_z_to_xc(pw,px,pxc)
-#else
     call transpose_z_to_x(pw,px)
-#endif
-#else
-    ! TBD: replace the two transposes below with transpose_z_to_x
-    call transpose_z_to_y(pz,py)
-    call transpose_y_to_x(py,px)
 #endif
     !
 #ifdef USE_CUDA
-
-#ifdef EPHC
-#ifndef EPHC
     ng1 = ng(1)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(2)/dims(1)
         do i=1,ng(1)
-          if( i .eq. 1)  then
-            pxc(i,j,k) = px(i,j,k)
-          else
-            pxc(i+1,j,k) = px(i,j,k)
-          endif
+          pxc(i,j,k) = px(i,j,k)
         enddo
       enddo
     enddo
-#endif
-#else
     ng1 = ng(1)
-    !$cuf kernel do(3) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(2)/dims(1)
-        do i=1,(ng1/2)+1
-          pxc(i,j,k)%re = px(i,j,k)
-        enddo
+        pxc(ng1+1,j,k) = pxc(2,j,k)
+        pxc(2    ,j,k) = 0.
       enddo
     enddo
-    !
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        do i=(ng1/2)+2,ng1
-          pxc(i-(ng1/2),j,k)%im = px( ng1 - (i - (ng1/2 + 2)),j,k)
-        enddo
-      enddo
-    enddo
-#endif
     call fftb_gpu(cufft_plan_bwd_x, pxc, px)
     !
 #else
     call fft(arrplan(2,1),px) ! bwd transform in x
 #endif
     !
-#ifdef EPHC
-    call transpose_x_to_yct(px,py,pyc_t)
-#else
     call transpose_x_to_y(px,py)
-#endif
     !
 #ifdef USE_CUDA
     !
-#ifdef EPHC
-#ifndef EPHC
-    !pyc_t = 0.
-    !
-    ng2 = ng(2)
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(1)/dims(1)
         do i=1,ng(2)
-          if( i .eq. 1 ) then
-            pyc_t(i,j,k) = py(j,i,k)
-          else
-            pyc_t(i+1,j,k) = py(j,i,k)
-          endif
+          pyc_t(i,j,k) = py(j,i,k)
         enddo
       enddo
     enddo
-#endif
-#else
-    !pyc_t = (0.,0.)
-    !
     ng2 = ng(2)
-    !$cuf kernel do(3) <<<*,*>>>
+    !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(1)/dims(1)
-        do i=1,(ng2/2)+1
-          pyc_t(i,j,k)%re = py(j,i,k)
-        enddo
+        pyc_t(ng2+1,j,k) = pyc_t(2,j,k)
+        pyc_t(2    ,j,k) = 0.
       enddo
     enddo
     !
-    !$cuf kernel do(3) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        do i=(ng2/2)+2,ng2
-          pyc_t(i-(ng2/2),j,k)%im = py( j, ng2 - (i - (ng2/2 + 2)),k)
-        enddo
-      enddo
-    enddo
-#endif
     call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
     !
-#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do i=1,ng(2)
@@ -534,18 +354,12 @@ module mod_solver
         enddo
       enddo
     enddo
-#endif
 #else
     call fft(arrplan(2,2),py) ! bwd transform in y
 #endif
     !
-#ifdef EPHC
-    call transpose_yt_to_zp( py, pz, py_t, p, normfft )
-#else
     call transpose_y_to_z(py,pz)
-#endif
     !
-#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -556,16 +370,8 @@ module mod_solver
         enddo
       enddo
     enddo
-#endif
-
-#ifdef EPHC
     endif
-#endif
     !
-    !deallocate(px,py,pz,pw)
-#ifdef USE_CUDA
-    !deallocate(pxc,pyc_t,py_t)
-#endif
     return
   end subroutine solver
   !

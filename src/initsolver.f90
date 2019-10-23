@@ -36,12 +36,6 @@ module mod_initsolver
     integer :: i,j
     real(rp), dimension(n(1)*dims(1))      :: lambdax
     real(rp), dimension(n(2)*dims(2))      :: lambday
-#ifdef USE_CUDA
-#ifdef EPHC
-    real(rp), dimension(n(1)*dims(1)+2)      :: lambdax_temp
-    real(rp), dimension(n(2)*dims(2)+2)      :: lambday_temp
-#endif
-#endif
     integer, dimension(3) :: ng
     integer :: ii,jj
     !
@@ -57,49 +51,6 @@ module mod_initsolver
     ! add eigenvalues
     !
 #ifdef USE_CUDA
-#ifdef EPHC
-    ! N.B.: This re-arranging of eigenvalues is only valid for periodic BCs.
-    !
-    ! un-scramble lambday
-    !
-    do i=1,ng(2)+2
-      lambday_temp(i) = 0.
-    enddo
-    do i=1,ng(2)
-      if(i .le. (ng(2)/2)+1)  then
-        lambday_temp(2*i-1) = lambday(i)
-      else
-        lambday_temp(2*(i-(ng(2)/2))) = lambday(ng(2)-(i-(ng(2)/2+2)))
-      endif
-    enddo
-    !
-    ! new format: shift to hide first imaginary element
-    !
-    lambday(1) = lambday_temp(1)
-    do i=2,ng(2)
-      lambday(i) = lambday_temp(i+1)
-    enddo
-    !
-    ! un-scramble lambdax
-    !
-    do i=1,ng(1)+2
-      lambdax_temp(i) = 0.
-    enddo
-    do i=1,ng(1)
-      if(i .le. (ng(1)/2)+1)  then
-        lambdax_temp(2*i-1) = lambdax(i)
-      else
-        lambdax_temp(2*(i-(ng(1)/2))) = lambdax(ng(1)-(i-(ng(1)/2+2)))
-      endif
-    enddo
-    !
-    ! new format: shift to hide first imaginary element
-    !
-    lambdax(1) = lambdax_temp(1)
-    do i=2,ng(1)
-      lambdax(i) = lambdax_temp(i+1)
-    enddo
-#endif
     !
     ! use new z pencils
     !
@@ -153,12 +104,30 @@ module mod_initsolver
     character(len=1), intent(in), dimension(0:1) :: bc
     character(len=1), intent(in) :: c_or_f ! c -> cell-centered; f -> face-centered
     real(rp), intent(out), dimension(n) :: lambda
+    real(rp)             , dimension(n) :: lambda_aux
     integer :: l 
     select case(bc(0)//bc(1))
     case('PP')
       do l=1,n
-        lambda(l  )   = -4.*sin((1.*(l-1))*pi/(1.*n))**2
+        lambda_aux(l  )   = -4.*sin((1.*(l-1))*pi/(1.*n))**2
       enddo
+      !
+      ! new format: (r[0],r[n],r[1],i[1],...,r[n-1],i[n-1])
+      ! note that i[0] = i[n] = 0 in a R2C DFT
+      !
+      lambda(1) = lambda_aux(1    )
+      lambda(2) = lambda_aux(n/2+1)
+      do l=2,n-1
+        if(l.le.n/2) then ! real eigenvalue
+          lambda(2*l-1          ) = lambda_aux(l  )
+        else              ! imaginary eigenvalue
+          lambda(n-2*(l-(n/2+1))) = lambda_aux(l+1)
+        endif
+      enddo
+      !do l=1,n
+      !  print*,l,lambda(l),lambda_aux(l)
+      !enddo
+      !stop
     case('NN')
       if(    c_or_f.eq.'c') then
         do l=1,n

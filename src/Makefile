@@ -4,9 +4,9 @@ FC   = mpif90
 BIG := # -mcmodel=medium
 DBG := # -g -fbacktrace -Wall -O0 -Wextra -pedantic -fcheck=all
 OMP := #-mp # -fopenmp
-OPT := -O3 -Mcuda=cc70,cuda10.0
+OPT := -O3 -Mcuda=ccall,cuda10.0
 #OPT := -O3 -Mcuda=cc70,nofma
-OTH := -DTIMING -DEPHC -DGPU_MPI -DEPA2A -DTIMING -DUSE_CUDA -DUSE_NVTX #-DDEBUG #-DIMPDIFF
+OTH := -DTIMING -DGPU_MPI -DEPA2A -DTIMING -DUSE_CUDA -DUSE_NVTX #-DDEBUG #-DIMPDIFF
 PROF := #-pg
 FFLAGS := $(OPT) $(BIG) $(DBG) $(PROF) $(OMP) $(OTH)
 TARGET = cans
