@@ -124,10 +124,6 @@ module mod_initsolver
           lambda(n-2*(l-(n/2+1))) = lambda_aux(l+1)
         endif
       enddo
-      !do l=1,n
-      !  print*,l,lambda(l),lambda_aux(l)
-      !enddo
-      !stop
     case('NN')
       if(    c_or_f.eq.'c') then
         do l=1,n

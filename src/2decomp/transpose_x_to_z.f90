@@ -52,11 +52,7 @@
     do k=1,s3
     do j=1,s2
     do i=1,s1
-      if( i .eq. 1)  then
-        src(i,j,k) = pxc(i,j,k)
-      else
-        src(i,j,k) = pxc(i+1,j,k)
-      endif
+      src(i,j,k) = pxc(i,j,k)
     end do
     end do
     end do
@@ -89,11 +85,7 @@
        do j=1,s2
        do i=istart, iend
          idx = (i-istart+1) + decomp_x2distm*(j-1) + decomp_x2distm*s2*(k-1)
-         if( i .eq. 1 ) then
-           work1_r_d(pos + idx - 1) = pxc(i  ,j,k)
-         else
-           work1_r_d(pos + idx - 1) = pxc(i+1,j,k)
-         endif
+         work1_r_d(pos + idx - 1) = pxc(i,j,k)
        enddo
        enddo
        enddo
@@ -117,11 +109,7 @@
       do k=kstart, kend
       do j=1,s2
       do i=istart, iend
-         if( i .eq. 1 ) then
-           dst((i-istart+1),j,k) = pxc(i  ,j,(k-kstart+1))
-         else
-           dst((i-istart+1),j,k) = pxc(i+1,j,(k-kstart+1))
-         endif
+        dst((i-istart+1),j,k) = pxc(i,j,(k-kstart+1))
       enddo
       enddo
       enddo

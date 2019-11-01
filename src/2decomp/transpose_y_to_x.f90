@@ -50,11 +50,7 @@
     do k=1,s3
     do j=1,s2
     do i=1,s1
-      if( j .eq. 1 ) then
-        src(i,j,k) = yct(j,i,k)
-      else
-        src(i,j,k) = yct(j+1,i,k)
-      endif
+      src(i,j,k) = yct(j,i,k)
     end do
     end do
     end do
@@ -87,11 +83,7 @@
        do j=jstart, jend
        do i=1,s1
          idx = i + s1*(j-jstart) + s1*decomp_y1distm*(k-1)
-         if( j .eq. 1 ) then 
-           work1_r_d(pos + idx - 1) = yct(j  ,i,k)
-         else
-           work1_r_d(pos + idx - 1) = yct(j+1,i,k)
-         endif
+         work1_r_d(pos + idx - 1) = yct(j,i,k)
        enddo
        enddo
        enddo
@@ -121,11 +113,7 @@
       do k=1,s3
       do j=jstart, jend
       do i=istart, iend
-         if( j .eq. 1 ) then
-           dst(i,(j-jstart+1),k) = yct(j  ,(i-istart+1),k)
-         else
-           dst(i,(j-jstart+1),k) = yct(j+1,(i-istart+1),k)
-         endif
+        dst(i,(j-jstart+1),k) = yct(j,(i-istart+1),k)
       enddo
       enddo
       enddo

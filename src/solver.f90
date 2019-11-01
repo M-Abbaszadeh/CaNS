@@ -4,12 +4,12 @@ module mod_solver
   use mod_fft   , only: fft
   use mod_param , only: dims
   use mod_types
-#ifdef USE_CUDA
+  #ifdef USE_CUDA
   use cudafor
   use mod_fftw_param
   use mod_fft,        only: fftf_gpu,fftb_gpu
   use mod_common_mpi, only: mydev
-#endif
+  #endif
   implicit none
   real(rp), allocatable, dimension(:,:,:) :: px,py,pz
 #ifdef USE_CUDA
@@ -199,8 +199,9 @@ module mod_solver
           enddo
         enddo
       enddo
-    else ! if single rank
+    else ! if not single rank
 #endif
+#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -213,8 +214,10 @@ module mod_solver
     enddo
     !
     call transpose_z_to_y(pz,py)
+#endif
     !
 #ifdef USE_CUDA
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(1)/dims(1)
@@ -223,6 +226,9 @@ module mod_solver
         enddo
       enddo
     enddo
+#else
+    call transpose_zp_to_yt(pz,py,p,py_t)
+#endif
     !
     call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
     !
@@ -235,6 +241,7 @@ module mod_solver
         pyc_t(2,j,k) = pyc_t(ng2+1,j,k)
       enddo
     enddo
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)/dims(2)
       do i=1,ng(2)
@@ -243,14 +250,20 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
     !
 #else
     call fft(arrplan(1,2),py) ! fwd transform in y
 #endif
     !
+#ifndef EPHC
     call transpose_y_to_x(py,px)
+#endif
     !
 #ifdef USE_CUDA
+#ifdef EPHC
+    call transpose_yct_to_x(py,px,pyc_t)
+#endif
     call fftf_gpu(cufft_plan_fwd_x, px, pxc)
     !
     ! convert format
@@ -262,6 +275,7 @@ module mod_solver
         pxc(2,j,k) = pxc(ng1+1,j,k)
       enddo
     enddo
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(2)/dims(1)
@@ -270,13 +284,20 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
     !
 #else
     call fft(arrplan(1,1),px) ! fwd transform in x
 #endif
     !
 #ifdef USE_CUDA
+#ifndef EPHC
     call transpose_x_to_z(px,pw)
+#else
+    call transpose_xc_to_z(px,pw,pxc)
+#endif
+#else
+    call transpose_x_to_z(px,pz)
 #endif
     !
     q = 0
@@ -296,11 +317,17 @@ module mod_solver
     endif
     !
 #ifdef USE_CUDA
+#ifndef EPHC
     call transpose_z_to_x(pw,px)
+#else
+    call transpose_z_to_xc(pw,px,pxc)
+#endif
+#else
+    call transpose_z_to_x(pz,px)
 #endif
     !
 #ifdef USE_CUDA
-    ng1 = ng(1)
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(2)/dims(1)
@@ -309,6 +336,7 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
     ng1 = ng(1)
     !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -323,10 +351,15 @@ module mod_solver
     call fft(arrplan(2,1),px) ! bwd transform in x
 #endif
     !
+#ifndef EPHC
     call transpose_x_to_y(px,py)
+#else
+    call transpose_x_to_yct(px,py,pyc_t)
+#endif
     !
 #ifdef USE_CUDA
     !
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do j=1,ng(1)/dims(1)
@@ -335,6 +368,7 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
     ng2 = ng(2)
     !$cuf kernel do(2) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -346,6 +380,7 @@ module mod_solver
     !
     call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
     !
+#ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
       do i=1,ng(2)
@@ -354,12 +389,18 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
 #else
     call fft(arrplan(2,2),py) ! bwd transform in y
 #endif
     !
+#ifndef EPHC
     call transpose_y_to_z(py,pz)
+#else
+    call transpose_yt_to_zp( py, pz, py_t, p, normfft)
+#endif
     !
+#ifndef EPHC
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #endif
@@ -370,6 +411,7 @@ module mod_solver
         enddo
       enddo
     enddo
+#endif
     endif
     !
     return

@@ -199,39 +199,6 @@ module mod_fft
 #endif
     return
   end subroutine fftb_gpu
-  subroutine convert_complex_format(idir,f_or_b,n,arr)
-  implicit none
-  integer  , intent(in)                      :: idir
-  character, intent(in)                      :: f_or_b
-  integer  , intent(in)   , dimension(3    ) :: n
-  real(rp) , intent(inout), dimension(:,:,:) :: arr
-  attributes(device) :: arr
-  integer :: m2,m3,np,q2,q3
-  select case(idir)
-  case(1)
-    m3 = n(3)
-    m2 = n(2)
-    np = n(1) + 1
-    select case(f_or_b)
-    case('f')
-      !$cuf kernel do(2) <<<*,*>>>
-      do q3=1,m3
-        do q2=1,m2
-          arr(2 ,q2,q3) = arr(np,q2,q3)
-        enddo
-      enddo
-    case('b')
-      !$cuf kernel do(2) <<<*,*>>>
-      do q3=1,m3
-        do q2=1,m2
-          arr(np,q2,q3) = arr(2 ,q2,q3)
-          arr(2 ,q2,q3) = 0.
-        enddo
-      enddo
-    end select
-  end select
-  return
-  end subroutine convert_complex_format
 #endif
   !
   subroutine find_fft(bc,c_or_f,kind_fwd,kind_bwd,norm)
