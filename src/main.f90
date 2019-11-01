@@ -108,8 +108,8 @@ program cans
   integer :: istat
   integer(kind=cuda_count_kind) :: freeMem,totMem
   integer(8) :: totEle
-  attributes(managed) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,dudtrk_A,dvdtrk_A,dwdtrk_A,lambdaxyp,ap,bp,cp,rhsbp
-  attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_B,dvdtrk_B,dwdtrk_B
+  attributes(managed) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,lambdaxyp,ap,bp,cp,rhsbp
+  attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_A,dvdtrk_A,dwdtrk_A,dudtrk_B,dvdtrk_B,dwdtrk_B
 #endif
   real(rp) :: meanvel
   real(rp), dimension(3) :: dpdl
@@ -120,7 +120,7 @@ program cans
 #endif
   real(rp) :: f1d,f2d,f3d
   character(len=7) :: fldnum
-  integer :: lenr,kk
+  integer :: kk
   logical :: kill
   !
   call MPI_INIT(ierr)
@@ -300,8 +300,7 @@ program cans
   call nvtxEndRange
 #endif
   if(myid.eq.0) then
-    inquire (iolength=lenr) dzc(1)
-    open(99,file=trim(datadir)//'grid.bin',access='direct',recl=4*n(3)*lenr)
+    open(99,file=trim(datadir)//'grid.bin',access='direct',recl=4*n(3)*sizeof(1._rp))
     write(99,rec=1) dzc(1:n(3)),dzf(1:n(3)),zc(1:n(3)),zf(1:n(3))
     close(99)
     open(99,file=trim(datadir)//'grid.out')
@@ -384,7 +383,7 @@ program cans
   !$cuf kernel do(3) <<<*,*>>> 
   do k=1,n(3)
     do j=1,n(2)
-      do i=1,n(3)
+      do i=1,n(1)
         dudtrko(i,j,k) = 0.
         dvdtrko(i,j,k) = 0.
         dwdtrko(i,j,k) = 0.
