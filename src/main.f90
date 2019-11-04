@@ -539,7 +539,7 @@ program cans
       call nvtxStartRange("solver_u", irk+3)
       #endif
       call updt_rhs_b((/'f','c','c'/),cbcvel(:,:,1),n,rhsbu%x,rhsbu%y,rhsbu%z,up)
-      call solver(n,arrplanu,normfftu,lambdaxyu,au,bb,cu,cbcvel(:,3,1),(/'f','c','c'/),up)
+      call solver(n,arrplanu,normfftu,lambdaxyu,au,bb,cu,cbcvel(:,:,1),(/'f','c','c'/),up)
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
@@ -567,7 +567,7 @@ program cans
       call nvtxStartRange("solver_v", irk+4)
       #endif
       call updt_rhs_b((/'c','f','c'/),cbcvel(:,:,2),n,rhsbv%x,rhsbv%y,rhsbv%z,vp)
-      call solver(n,arrplanv,normfftv,lambdaxyv,av,bb,cv,cbcvel(:,3,2),(/'c','f','c'/),vp)
+      call solver(n,arrplanv,normfftv,lambdaxyv,av,bb,cv,cbcvel(:,:,2),(/'c','f','c'/),vp)
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
@@ -595,7 +595,7 @@ program cans
       call nvtxStartRange("solver_w", irk+5)
       #endif
       call updt_rhs_b((/'c','c','f'/),cbcvel(:,:,3),n,rhsbw%x,rhsbw%y,rhsbw%z,wp)
-      call solver(n,arrplanw,normfftw,lambdaxyw,aw,bb,cw,cbcvel(:,3,3),(/'c','c','f'/),wp)
+      call solver(n,arrplanw,normfftw,lambdaxyw,aw,bb,cw,cbcvel(:,:,3),(/'c','c','f'/),wp)
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
@@ -639,7 +639,7 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("solver", irk+5)
       #endif
-      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,3),(/'c','c','c'/),pp)
+      call solver(n,arrplanp,normfftp,lambdaxyp,ap,bp,cp,cbcpre(:,:),(/'c','c','c'/),pp)
       #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("boundp", irk+6)

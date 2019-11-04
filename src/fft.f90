@@ -2,13 +2,13 @@ module mod_fft
   use iso_c_binding , only: C_INT
   use mod_common_mpi, only: ierr
   use mod_fftw_param
-  use mod_param     , only:dims
+  use mod_param     , only: pi,dims
   use mod_types
   !$ use omp_lib
   private
   public fftini,fftend,fft
 #ifdef USE_CUDA
-  public fftf_gpu,fftb_gpu
+  public fftf_gpu,fftb_gpu,signal_processing
 #endif
   contains
   subroutine fftini(nx,ny,nz,bcxy,c_or_f,arrplan,normfft)
@@ -109,12 +109,6 @@ module mod_fft
     plan_fwd_y=fftw_plan_guru_r2r(1,iodim,2,iodim_howmany,arry,arry,kind_fwd,FFTW_ESTIMATE)
     plan_bwd_y=fftw_plan_guru_r2r(1,iodim,2,iodim_howmany,arry,arry,kind_bwd,FFTW_ESTIMATE)
     normfft = normfft*norm(1)*(ny_y+norm(2)-iy)
-    !
-    normfft = normfft**(-1)
-    arrplan(1,1) = plan_fwd_x
-    arrplan(2,1) = plan_bwd_x
-    arrplan(1,2) = plan_fwd_y
-    arrplan(2,2) = plan_bwd_y
 #ifdef USE_CUDA
     if( .not. allocated( cufft_workspace ) ) then
       batch = nx_y*nz_y
@@ -138,6 +132,12 @@ module mod_fft
       istat = cufftSetWorkArea( cufft_plan_bwd_y, cufft_workspace )
     endif
 #endif
+    !
+    normfft = normfft**(-1)
+    arrplan(1,1) = plan_fwd_x
+    arrplan(2,1) = plan_bwd_x
+    arrplan(1,2) = plan_fwd_y
+    arrplan(2,2) = plan_bwd_y
     return
   end subroutine fftini
   !
@@ -256,4 +256,298 @@ module mod_fft
   endif
   return
   end subroutine find_fft
+#ifdef USE_CUDA
+  subroutine posp_fftf(n,idir,arr)
+    !
+    ! post-processing of a signal following a forward FFT
+    ! to order the data as follows:
+    ! (r[0],r[n],r[1],i[1],...,r[n-1],i[n-1])
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
+    integer , intent(in   ) :: idir                  ! direction where the transform is taken
+    real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
+    integer :: j,k,nn
+    attributes(device) :: arr
+    !
+    nn = n(idir)-2
+    select case(idir)
+    case(1)
+      !
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          arr(2,j,k) = arr(nn+1,j,k)
+        enddo
+      enddo
+    end select
+    return
+  end subroutine posp_fftf
+  subroutine prep_fftb(n,idir,arr)
+    !
+    ! pre-processing of a signal preciding a backward FFT
+    ! to order the data as follows:
+    ! (r[0],i[0],r[1],i[1],...,r[n-1],i[n-1],r[n],i[n])
+    ! note that i[0] = i[n] = 0
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
+    integer , intent(in   ) :: idir                  ! direction where the transform is taken
+    real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
+    integer :: j,k,nn
+    attributes(device) :: arr
+    !
+    nn = n(idir)-2
+    select case(idir)
+    case(1)
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          arr(nn+1,j,k) = arr(2,j,k)
+          arr(2   ,j,k) = 0.
+        enddo
+      enddo
+    end select
+    return
+  end subroutine prep_fftb
+  subroutine prep_dctiif(n,idir,arr)
+    !
+    ! pre-processing of a signal to perform a fast forward cosine transform
+    ! with FFTs (see Makhoul 1980)
+    ! 
+    ! the input signal x(n) is pre-processed into a signal v(n)
+    ! as follows:
+    !
+    ! v(n) = x(2n       ),              0 <= n <= floor((N-1)/2)
+    !      = x(2N -2n -1), floor((N+1)/2) <= n <= N-1
+    ! with n = 0,...,N-1 and N is the total number of elements 
+    ! of the signal.
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
+    integer , intent(in   ) :: idir                  ! array direction where the transform is taken
+    real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp   ! needs to be alocatable actually!
+    integer :: i,j,k,nn,ii
+    attributes(device) :: arr
+    attributes(device) :: arr_tmp
+    !
+    nn = n(idir)
+    select case(idir)
+    case(1)
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            ii = i-1
+            if(    ii.le.(nn-1)/2) then
+              arr_tmp(ii,j,k) = arr(2*ii+1       ,j,k)
+            else
+              arr_tmp(ii,j,k) = arr(2*(nn-ii)-1+1,j,k)
+            endif
+          enddo
+          do i=1,n(1)
+            ii = i-1
+            arr(i,j,k) = arr_tmp(ii,j,k)
+          enddo
+        enddo
+      enddo
+      !deallocate(arr_tmp)
+    end select
+    return
+  end subroutine prep_dctiif
+  subroutine posp_dctiif(n,idir,arr)
+    ! 
+    ! post-processing of a signal to perform a fast cosine transform
+    ! with FFTs (see Makhoul 1980)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n 
+    integer , intent(in   ) :: idir
+    real(rp), intent(inout), dimension(:,:,:) :: arr
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
+    integer :: i,j,k,ii,nn
+    attributes(device) :: arr
+    attributes(device) :: arr_tmp
+    real(rp) :: arg
+    !
+    nn = n(idir)-2
+    select case(idir)
+    case(1)
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1+1,n(2),n(3)))
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,nn+2,2
+            ii = (i-1)/2
+            !arr_tmp(ii   ,j,k) =    real( &
+            !                         2.*exp(-ri_unit*pi*ii/(2.*nn))*cmplx(arr(i,j,k),arr(i+1,j,k),rp) &
+            !                        )
+            !arr_tmp(nn-ii,j,k) = - aimag( &
+            !                         2.*exp(-ri_unit*pi*ii/(2.*nn))*cmplx(arr(i,j,k),arr(i+1,j,k),rp) &
+            !                        ) ! = 0 for ii=0
+            arg = -pi*ii/(2.*nn)
+            arr_tmp(ii   ,j,k) =  2.*(cos(arg)*arr(i,j,k) - sin(arg)*arr(i+1,j,k))
+            arr_tmp(nn-ii,j,k) = -2.*(sin(arg)*arr(i,j,k) + cos(arg)*arr(i+1,j,k))
+          enddo
+          do i=1,nn
+            ii = i-1
+            arr(i,j,k) = arr_tmp(ii,j,k)
+          enddo
+        enddo
+      enddo
+      !deallocate(arr_tmp)
+    end select
+    return
+  end subroutine posp_dctiif
+  subroutine prep_dctiib(n,idir,arr)
+    !
+    ! pre-processing of a signal to perform a fast backward cosine transform
+    ! with FFTs (see Makhoul 1980)
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n 
+    integer , intent(in   ) :: idir
+    real(rp), intent(inout), dimension(:,:,:) :: arr
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
+    integer :: i,j,k,nn,ii
+    attributes(device) :: arr
+    attributes(device) :: arr_tmp
+    real(rp) :: arg
+    !
+    nn = n(idir)-2
+    select case(idir)
+    case(1)
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1+1,n(2),n(3)))
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          arr(nn+1,j,k) = 0.
+          arr(nn+2,j,k) = 0.
+          do i=1,nn,2
+            ii = (i-1)/2
+            !arr_tmp(2*ii  ,j,k)  = real( 1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
+            !arr_tmp(2*ii+1,j,k)  = aimag(1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
+            arg = pi*ii/(2.*nn)
+            arr_tmp(2*ii  ,j,k) = 1.*(cos(arg)*arr(ii+1,j,k) + sin(arg)*arr(nn-ii+1,j,k))
+            arr_tmp(2*ii+1,j,k) = 1.*(sin(arg)*arr(ii+1,j,k) - cos(arg)*arr(nn-ii+1,j,k))
+          enddo
+          do i=1,nn
+            ii = i-1
+            arr(i,j,k) = arr_tmp(ii,j,k)
+          enddo
+        enddo
+      enddo
+      !deallocate(arr_tmp)
+    end select
+    return
+  end subroutine prep_dctiib
+  subroutine posp_dctiib(n,idir,arr)
+    !
+    ! post-processing of a signal to perform a fast forward cosine transform
+    ! with FFTs (see Makhoul 1980)
+    ! 
+    ! the input signal v(n) is post-processed into a signal x(n)
+    ! as follows:
+    !
+    ! v(n) = x(2n       ),              0 <= n <= floor((N-1)/2)
+    !      = x(2N -2n -1), floor((N+1)/2) <= n <= N-1
+    ! with n = 0,...,N-1 and N is the total number of elements 
+    ! of the signal.
+    !
+    implicit none
+    integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
+    integer , intent(in   ) :: idir                  ! array direction where the transform is taken
+    real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp ! needs to be alocatable actually!
+    integer :: i,j,k,nn,ii
+    attributes(device) :: arr
+    attributes(device) :: arr_tmp
+    !
+    nn = n(idir)
+    select case(idir)
+    case(1)
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      !$cuf kernel do(2) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
+          do i=1,n(1)
+            ii = i-1
+            arr_tmp(ii,j,k) = arr(i,j,k)
+          enddo
+          do i=1,n(1)
+            ii = i-1
+            if(    ii.le.(nn-1)/2) then
+              arr(2*ii+1       ,j,k) = arr_tmp(ii,j,k)
+            else
+              arr(2*(nn-ii)-1+1,j,k) = arr_tmp(ii,j,k)
+            endif
+          enddo
+        enddo
+      enddo
+      !deallocate(arr_tmp)
+    end select
+    return
+  end subroutine posp_dctiib
+  subroutine signal_processing(pre_or_pos,f_or_b,cbc,c_or_f,n,idir,arr)
+    implicit none
+    !
+    ! wrapper subroutine for signal processing to compute FFT-based transforms
+    ! (can also be done with pointers to a subroutine like in initgrid.f90)
+    !
+    integer,          intent(in) :: pre_or_pos ! prior (0) or after (1) fft
+    character(len=1), intent(in) :: f_or_b     ! forward or backward transform
+    character(len=2), intent(in) :: cbc        ! type of boundary condition
+    character(len=1), intent(in) :: c_or_f     ! cell- or face-centred BC?
+    integer, intent(in), dimension(3)         :: n
+    integer, intent(in)                       :: idir
+    real(rp), intent(inout), dimension(:,:,:) :: arr
+    attributes(device) :: arr
+    integer :: istat
+    select case(cbc)
+    case('PP')
+        select case(f_or_b)
+        case('F')
+          if(    pre_or_pos.eq.0) then
+            return
+          elseif(pre_or_pos.eq.1) then
+            call posp_fftf(n,idir,arr)
+          else
+          endif
+        case('B')
+          if(    pre_or_pos.eq.0) then
+            call prep_fftb(n,idir,arr)
+          elseif(pre_or_pos.eq.1) then
+            return
+          else
+          endif
+        end select
+      return
+    case('NN')
+      if(c_or_f.eq.'c') then
+        select case(f_or_b)
+        case('F')
+          if(    pre_or_pos.eq.0) then
+            call prep_dctiif(n,idir,arr)
+          elseif(pre_or_pos.eq.1) then
+            call posp_dctiif(n,idir,arr)
+          else
+          endif
+        case('B')
+          if(    pre_or_pos.eq.0) then
+            call prep_dctiib(n,idir,arr)
+          elseif(pre_or_pos.eq.1) then
+            call posp_dctiib(n,idir,arr)
+          else
+          endif
+        case default
+        end select
+      endif
+    case default
+      ! ERROR  (trap this in sanity check in sanity.f90)
+    end select
+    return
+  end subroutine signal_processing
+#endif
 end module mod_fft

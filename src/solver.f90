@@ -1,7 +1,7 @@
 module mod_solver
   use iso_c_binding, only: C_PTR
   use decomp_2d
-  use mod_fft   , only: fft
+  use mod_fft   , only: fft,signal_processing
   use mod_param , only: dims
   use mod_types
   #ifdef USE_CUDA
@@ -21,7 +21,7 @@ module mod_solver
   private
   public solver
   contains
-  subroutine solver(n,arrplan,normfft,lambdaxy,a,b,c,bcz,c_or_f,p)
+  subroutine solver(n,arrplan,normfft,lambdaxy,a,b,c,bc,c_or_f,p)
     implicit none
     integer , intent(in), dimension(3) :: n
     type(C_PTR), intent(in), dimension(2,2) :: arrplan
@@ -32,7 +32,7 @@ module mod_solver
     real(rp), intent(in), dimension(n(1),n(2)) :: lambdaxy
 #endif
     real(rp), intent(in), dimension(n(3)) :: a,b,c
-    character(len=1), dimension(0:1), intent(in) :: bcz
+    character(len=1), dimension(0:1,3), intent(in) :: bc
     character(len=1), intent(in), dimension(3) :: c_or_f
     real(rp), intent(inout), dimension(0:,0:,0:) :: p
     !real(rp), dimension(n(1)*dims(1),n(2)*dims(2)/dims(1),n(3)/dims(2)) :: px
@@ -89,18 +89,9 @@ module mod_solver
           enddo
         enddo
       enddo
-      !
+      call signal_processing(0,'F',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t )
       call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
-      !
-      ! convert format
-      !
-      ng2 = ng(2)
-      !$cuf kernel do(2) <<<*,*>>>
-      do k=1,ng(3)/dims(2)
-        do j=1,ng(1)/dims(1)
-          pyc_t(2,j,k) = pyc_t(ng2+1,j,k)
-        enddo
-      enddo
+      call signal_processing(1,'F',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)+2,ng(1)/dims(1),ng(3)/dims(2)/),1,pyc_t)
       !
       ! transpose to have x values in the leading dimention
       !
@@ -113,17 +104,9 @@ module mod_solver
         enddo
       enddo
       !
+      call signal_processing(0,'F',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)  ,ng(2)/dims(1),ng(3)/dims(2)/),1,px )
       call fftf_gpu(cufft_plan_fwd_x, px, pxc)
-      !
-      ! convert format
-      !
-      ng1 = ng(1)
-      !$cuf kernel do(2) <<<*,*>>>
-      do k=1,ng(3)/dims(2)
-        do j=1,ng(2)/dims(1)
-          pxc(2,j,k) = pxc(ng1+1,j,k)
-        enddo
-      enddo
+      call signal_processing(1,'F',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)+2,ng(2)/dims(1),ng(3)/dims(2)/),1,pxc)
       !
       ! dummy operation
       !
@@ -137,8 +120,8 @@ module mod_solver
       enddo
       !
       q = 0
-      if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
-      if(bcz(0)//bcz(1).eq.'PP') then
+      if(c_or_f(3).eq.'f'.and.bc(1,3).eq.'D') q = 1
+      if(bc(0,3)//bc(1,3).eq.'PP') then
         call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
       else
         call gaussel_gpu(         ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py)
@@ -155,18 +138,9 @@ module mod_solver
         enddo
       enddo
       !
-      ! convert format
-      !
-      ng1 = ng(1)
-      !$cuf kernel do(2) <<<*,*>>>
-      do k=1,ng(3)/dims(2)
-        do j=1,ng(2)/dims(1)
-          pxc(ng1+1,j,k) = pxc(2,j,k)
-          pxc(2    ,j,k) = 0.
-        enddo
-      enddo
-      !
+      call signal_processing(0,'B',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)+2,ng(2)/dims(1),ng(3)/dims(2)/),1,pxc)
       call fftb_gpu(cufft_plan_bwd_x, pxc, px)
+      call signal_processing(1,'B',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)  ,ng(2)/dims(1),ng(3)/dims(2)/),1,px )
       !
       ! transpose to have y values in the leading dimention
       !
@@ -178,16 +152,9 @@ module mod_solver
           enddo
         enddo
       enddo
-      ng2 = ng(2)
-      !$cuf kernel do(2) <<<*,*>>>
-      do k=1,ng(3)/dims(2)
-        do j=1,ng(1)/dims(1)
-          pyc_t(ng2+1,j,k) = pyc_t(2,j,k)
-          pyc_t(2    ,j,k) = 0.
-        enddo
-      enddo
-      !
+      call signal_processing(0,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)+2,ng(1)/dims(1),ng(3)/dims(2)/),1,pyc_t)
       call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
+      call signal_processing(1,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t)
       !
       ! transpose to have x values in the leading dimention
       !
@@ -230,17 +197,9 @@ module mod_solver
     call transpose_zp_to_yt(pz,py,p,py_t)
 #endif
     !
+    call signal_processing(0,'F',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t )
     call fftf_gpu(cufft_plan_fwd_y, py_t, pyc_t)
-    !
-    ! convert format
-    !
-    ng2 = ng(2)
-    !$cuf kernel do(2) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        pyc_t(2,j,k) = pyc_t(ng2+1,j,k)
-      enddo
-    enddo
+    call signal_processing(1,'F',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)+2,ng(1)/dims(1),ng(3)/dims(2)/),1,pyc_t)
 #ifndef EPHC
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
     do k=1,ng(3)/dims(2)
@@ -264,17 +223,9 @@ module mod_solver
 #ifdef EPHC
     call transpose_yct_to_x(py,px,pyc_t)
 #endif
+    call signal_processing(0,'F',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)  ,ng(2)/dims(1),ng(3)/dims(2)/),1,px )
     call fftf_gpu(cufft_plan_fwd_x, px, pxc)
-    !
-    ! convert format
-    !
-    ng1 = ng(1)
-    !$cuf kernel do(2) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        pxc(2,j,k) = pxc(ng1+1,j,k)
-      enddo
-    enddo
+    call signal_processing(1,'F',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)+2,ng(2)/dims(1),ng(3)/dims(2)/),1,pxc)
 #ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
     do k=1,ng(3)/dims(2)
@@ -303,8 +254,8 @@ module mod_solver
 #endif
     !
     q = 0
-    if(c_or_f(3).eq.'f'.and.bcz(1).eq.'D') q = 1
-    if(bcz(0)//bcz(1).eq.'PP') then
+    if(c_or_f(3).eq.'f'.and.bc(1,3).eq.'D') q = 1
+    if(bc(0,3)//bc(1,3).eq.'PP') then
 #ifdef USE_CUDA
       call gaussel_periodic_gpu(ng(1)/dims(2),ng(2)/dims(1),n(3)-q,a,b,c,lambdaxy,pw,px,py,pxc,pyc_t)
 #else
@@ -341,15 +292,9 @@ module mod_solver
       enddo
     enddo
 #endif
-    ng1 = ng(1)
-    !$cuf kernel do(2) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(2)/dims(1)
-        pxc(ng1+1,j,k) = pxc(2,j,k)
-        pxc(2    ,j,k) = 0.
-      enddo
-    enddo
+    call signal_processing(0,'B',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)+2,ng(2)/dims(1),ng(3)/dims(2)/),1,pxc)
     call fftb_gpu(cufft_plan_bwd_x, pxc, px)
+    call signal_processing(1,'B',bc(0,1)//bc(1,1),c_or_f(1),(/ng(1)  ,ng(2)/dims(1),ng(3)/dims(2)/),1,px )
     !
 #else
     call fft(arrplan(2,1),px) ! bwd transform in x
@@ -373,16 +318,10 @@ module mod_solver
       enddo
     enddo
 #endif
-    ng2 = ng(2)
-    !$cuf kernel do(2) <<<*,*>>>
-    do k=1,ng(3)/dims(2)
-      do j=1,ng(1)/dims(1)
-        pyc_t(ng2+1,j,k) = pyc_t(2,j,k)
-        pyc_t(2    ,j,k) = 0.
-      enddo
-    enddo
     !
+    call signal_processing(0,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)+2,ng(1)/dims(1),ng(3)/dims(2)/),1,pyc_t)
     call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
+    call signal_processing(1,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t)
     !
 #ifndef EPHC
     !$cuf kernel do(3) <<<*,*>>>
