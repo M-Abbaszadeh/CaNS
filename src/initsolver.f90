@@ -109,7 +109,11 @@ module mod_initsolver
     select case(bc(0)//bc(1))
     case('PP')
       do l=1,n
-        lambda_aux(l  )   = -4.*sin((1.*(l-1))*pi/(1.*n))**2
+        lambda(l)   = -4.*sin((1.*(l-1))*pi/(1.*n))**2
+      enddo
+      #ifdef USE_CUDA
+      do l=1,n
+        lambda_aux(l  ) = lambda(l)
       enddo
       !
       ! new format: (r[0],r[n],r[1],i[1],...,r[n-1],i[n-1])
@@ -124,6 +128,7 @@ module mod_initsolver
           lambda(n-2*(l-(n/2+1))) = lambda_aux(l+1)
         endif
       enddo
+      #endif
     case('NN')
       if(    c_or_f.eq.'c') then
         do l=1,n

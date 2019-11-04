@@ -298,6 +298,8 @@ module mod_solver
 #endif
 #else
     call transpose_x_to_z(px,pz)
+    !call transpose_x_to_y(px,py)
+    !call transpose_y_to_z(py,pz)
 #endif
     !
     q = 0
@@ -324,6 +326,8 @@ module mod_solver
 #endif
 #else
     call transpose_z_to_x(pz,px)
+    !call transpose_z_to_y(pz,py)
+    !call transpose_y_to_x(py,px)
 #endif
     !
 #ifdef USE_CUDA
@@ -412,7 +416,9 @@ module mod_solver
       enddo
     enddo
 #endif
+#ifdef USE_CUDA
     endif
+#endif
     !
     return
   end subroutine solver
