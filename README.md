@@ -9,7 +9,7 @@ This is the many-GPU version of **CaNS** with CUDA Fortran and MPI.
  * Neumann-Dirichlet
  * Periodic
  
-(note: for the moment the GPU version of CaNS only supports periodicity in the two directions.)
+(note: for the moment the GPU version of CaNS only supports periodicity in these two directions.)
 
 In the third domain direction, the solver is more flexible as it uses Gauss elimination. There the grid can also be non-uniform (e.g. fine at the boundary and coarser in the center).
 
