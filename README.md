@@ -5,11 +5,9 @@ This is the many-GPU version of **CaNS** with CUDA Fortran and MPI.
 **CaNS (Canonical Navier-Stokes)** is a code for massively-parallel numerical simulations of fluid flows. It aims at solving any fluid flow of an incompressible, Newtonian fluid that can benefit from a FFT-based solver for the second-order finite-difference Poisson equation in a 3D Cartesian grid. In two directions the grid is regular and the solver supports the following combination of (homogeneous) boundary conditions:
 
  * Neumann-Neumann
- * Dirichlet-Dirichlet
- * Neumann-Dirichlet
  * Periodic
- 
-(note: for the moment the GPU version of CaNS only supports periodicity in these two directions.)
+ * Dirichlet-Dirichlet (not yet supported in the GPU version)
+ * Neumann-Dirichlet   (not yet supported in the GPU version)
 
 In the third domain direction, the solver is more flexible as it uses Gauss elimination. There the grid can also be non-uniform (e.g. fine at the boundary and coarser in the center).
 

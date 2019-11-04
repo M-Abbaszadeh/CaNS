@@ -425,7 +425,7 @@ module mod_fft
         do j=1,n(2)
           arr(nn+1,j,k) = 0.
           arr(nn+2,j,k) = 0.
-          do i=1,nn,2
+          do i=1,nn+2,2
             ii = (i-1)/2
             !arr_tmp(2*ii  ,j,k)  = real( 1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
             !arr_tmp(2*ii+1,j,k)  = aimag(1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
@@ -433,7 +433,7 @@ module mod_fft
             arr_tmp(2*ii  ,j,k) = 1.*(cos(arg)*arr(ii+1,j,k) + sin(arg)*arr(nn-ii+1,j,k))
             arr_tmp(2*ii+1,j,k) = 1.*(sin(arg)*arr(ii+1,j,k) - cos(arg)*arr(nn-ii+1,j,k))
           enddo
-          do i=1,nn
+          do i=1,nn+2
             ii = i-1
             arr(i,j,k) = arr_tmp(ii,j,k)
           enddo
