@@ -248,9 +248,8 @@ module mod_solver
     call transpose_xc_to_z(px,pw,pxc)
 #endif
 #else
-    call transpose_x_to_z(px,pz)
-    !call transpose_x_to_y(px,py)
-    !call transpose_y_to_z(py,pz)
+    call transpose_x_to_y(px,py)
+    call transpose_y_to_z(py,pz)
 #endif
     !
     q = 0
@@ -276,9 +275,8 @@ module mod_solver
     call transpose_z_to_xc(pw,px,pxc)
 #endif
 #else
-    call transpose_z_to_x(pz,px)
-    !call transpose_z_to_y(pz,py)
-    !call transpose_y_to_x(py,px)
+    call transpose_z_to_y(pz,py)
+    call transpose_y_to_x(py,px)
 #endif
     !
 #ifdef USE_CUDA
