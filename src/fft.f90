@@ -310,10 +310,10 @@ module mod_fft
     end select
     return
   end subroutine prep_fftb
-  subroutine prep_dctiif(n,idir,arr)
+  subroutine prep_dctiif(n,idir,arr,is_swap_order,is_negate_even)
     !
-    ! pre-processing of a signal to perform a fast forward cosine transform
-    ! with FFTs (see Makhoul 1980)
+    ! pre-processing of a signal to perform a fast forward 
+    ! discrete cosine transform (DCT) with FFTs (see Makhoul 1980)
     ! 
     ! the input signal x(n) is pre-processed into a signal v(n)
     ! as follows:
@@ -323,11 +323,16 @@ module mod_fft
     ! with n = 0,...,N-1 and N is the total number of elements 
     ! of the signal.
     !
+    ! pre-processing required for computing the corresponding
+    ! discrete sine transform (DST) may also be performed
+    !
     implicit none
     integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
     integer , intent(in   ) :: idir                  ! array direction where the transform is taken
     real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp   ! needs to be alocatable actually!
+    logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
+    logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
@@ -336,6 +341,33 @@ module mod_fft
     select case(idir)
     case(1)
       if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      if(is_swap_order) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              ii = i-1
+              arr_tmp(ii,j,k) = arr(i,j,k)
+            enddo
+            do i=1,nn
+              ii = i-1
+              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            enddo
+          enddo
+        enddo
+      endif
+      if(is_negate_even) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              if(mod(i,2).eq.0) then
+                arr(i,j,k) = - arr(i,j,k)
+              endif
+            enddo
+          enddo
+        enddo
+      endif
       !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
@@ -357,15 +389,20 @@ module mod_fft
     end select
     return
   end subroutine prep_dctiif
-  subroutine posp_dctiif(n,idir,arr)
+  subroutine posp_dctiif(n,idir,arr,is_swap_order,is_negate_even)
     ! 
-    ! post-processing of a signal to perform a fast cosine transform
-    ! with FFTs (see Makhoul 1980)
+    ! post-processing of a signal to perform a fast forward discrete
+    ! cosine transform with FFTs (see Makhoul 1980)
+    !
+    ! post-processing required for computing the corresponding
+    ! discrete sine transform (DST) may also be performed
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n 
     integer , intent(in   ) :: idir
     real(rp), intent(inout), dimension(:,:,:) :: arr
+    logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
+    logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp
     integer :: i,j,k,ii,nn
     attributes(device) :: arr
@@ -375,7 +412,7 @@ module mod_fft
     nn = n(idir)-2
     select case(idir)
     case(1)
-      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1+1,n(2),n(3)))
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
       !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
@@ -397,20 +434,52 @@ module mod_fft
           enddo
         enddo
       enddo
-      !deallocate(arr_tmp)
+      if(is_swap_order) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              ii = i-1
+              arr_tmp(ii,j,k) = arr(i,j,k) ! redundant
+            enddo
+            do i=1,nn
+              ii = i-1
+              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            enddo
+          enddo
+        enddo
+      endif
+      if(is_negate_even) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              if(mod(i,2).eq.0) then
+                arr(i,j,k) = - arr(i,j,k)
+              endif
+            enddo
+          enddo
+        enddo
+      endif
     end select
     return
   end subroutine posp_dctiif
-  subroutine prep_dctiib(n,idir,arr)
+  subroutine prep_dctiib(n,idir,arr,is_swap_order,is_negate_even)
     !
-    ! pre-processing of a signal to perform a fast backward cosine transform
-    ! with FFTs (see Makhoul 1980)
+    ! pre-processing of a signal to perform a fast backward 
+    ! discrete cosine transform (DST) with FFTs (see Makhoul 1980)
+    !
+    ! pre-processing required for computing the corresponding
+    ! discrete sine transform (DST) may also be performed
     !
     implicit none
     integer , intent(in   ), dimension(3) :: n 
     integer , intent(in   ) :: idir
     real(rp), intent(inout), dimension(:,:,:) :: arr
+    logical, intent(in) :: is_swap_order,is_negate_even
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp
+    logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
+    logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
@@ -419,7 +488,34 @@ module mod_fft
     nn = n(idir)-2
     select case(idir)
     case(1)
-      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1+1,n(2),n(3)))
+      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      if(is_swap_order) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              ii = i-1
+              arr_tmp(ii,j,k) = arr(i,j,k)
+            enddo
+            do i=1,nn
+              ii = i-1
+              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            enddo
+          enddo
+        enddo
+      endif
+      if(is_negate_even) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              if(mod(i,2).eq.0) then
+                arr(i,j,k) = - arr(i,j,k)
+              endif
+            enddo
+          enddo
+        enddo
+      endif
       !$cuf kernel do(2) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
@@ -443,10 +539,10 @@ module mod_fft
     end select
     return
   end subroutine prep_dctiib
-  subroutine posp_dctiib(n,idir,arr)
+  subroutine posp_dctiib(n,idir,arr,is_swap_order,is_negate_even)
     !
-    ! post-processing of a signal to perform a fast forward cosine transform
-    ! with FFTs (see Makhoul 1980)
+    ! post-processing of a signal to perform a fast forward
+    ! discrete cosine transform (DCT) with FFTs (see Makhoul 1980)
     ! 
     ! the input signal v(n) is post-processed into a signal x(n)
     ! as follows:
@@ -456,11 +552,16 @@ module mod_fft
     ! with n = 0,...,N-1 and N is the total number of elements 
     ! of the signal.
     !
+    ! post-processing required for computing the corresponding
+    ! discrete sine transform (DST) may also be performed
+    !
     implicit none
     integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
     integer , intent(in   ) :: idir                  ! array direction where the transform is taken
     real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp ! needs to be alocatable actually!
+    logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
+    logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
@@ -486,6 +587,33 @@ module mod_fft
           enddo
         enddo
       enddo
+      if(is_swap_order) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              ii = i-1
+              arr_tmp(ii,j,k) = arr(i,j,k)
+            enddo
+            do i=1,nn
+              ii = i-1
+              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            enddo
+          enddo
+        enddo
+      endif
+      if(is_negate_even) then
+        !$cuf kernel do(2) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
+            do i=1,nn
+              if(mod(i,2).eq.0) then
+                arr(i,j,k) = - arr(i,j,k)
+              endif
+            enddo
+          enddo
+        enddo
+      endif
       !deallocate(arr_tmp)
     end select
     return
@@ -529,16 +657,36 @@ module mod_fft
         select case(f_or_b)
         case('F')
           if(    pre_or_pos.eq.0) then
-            call prep_dctiif(n,idir,arr)
+            call prep_dctiif(n,idir,arr,.false.,.false.)
           elseif(pre_or_pos.eq.1) then
-            call posp_dctiif(n,idir,arr)
+            call posp_dctiif(n,idir,arr,.false.,.false.)
           else
           endif
         case('B')
           if(    pre_or_pos.eq.0) then
-            call prep_dctiib(n,idir,arr)
+            call prep_dctiib(n,idir,arr,.false.,.false.)
           elseif(pre_or_pos.eq.1) then
-            call posp_dctiib(n,idir,arr)
+            call posp_dctiib(n,idir,arr,.false.,.false.)
+          else
+          endif
+        case default
+        end select
+      endif
+    case('DD')
+      if(c_or_f.eq.'c') then
+        select case(f_or_b)
+        case('F')
+          if(    pre_or_pos.eq.0) then
+            call prep_dctiif(n,idir,arr,.false.,.true. )
+          elseif(pre_or_pos.eq.1) then
+            call posp_dctiif(n,idir,arr,.true. ,.false.)
+          else
+          endif
+        case('B')
+          if(    pre_or_pos.eq.0) then
+            call prep_dctiib(n,idir,arr,.true. ,.false.)
+          elseif(pre_or_pos.eq.1) then
+            call posp_dctiib(n,idir,arr,.false.,.true. )
           else
           endif
         case default
