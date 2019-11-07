@@ -154,7 +154,7 @@ module mod_solver
       enddo
       call signal_processing(0,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)+2,ng(1)/dims(1),ng(3)/dims(2)/),1,pyc_t)
       call fftb_gpu(cufft_plan_bwd_y, pyc_t, py_t)
-      call signal_processing(1,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t)
+      call signal_processing(1,'B',bc(0,2)//bc(1,2),c_or_f(2),(/ng(2)  ,ng(1)/dims(1),ng(3)/dims(2)/),1,py_t )
       !
       ! transpose to have x values in the leading dimention
       !
