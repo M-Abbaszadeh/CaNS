@@ -331,9 +331,9 @@ module mod_fft
     integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
     integer , intent(in   ) :: idir                  ! array direction where the transform is taken
     real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
-    real(rp), allocatable, dimension(:,:,:) :: arr_tmp   ! needs to be alocatable actually!
     logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
     logical, intent(in) :: is_negate_even ! negate every other element of the input array?
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
@@ -479,10 +479,9 @@ module mod_fft
     integer , intent(in   ), dimension(3) :: n 
     integer , intent(in   ) :: idir
     real(rp), intent(inout), dimension(:,:,:) :: arr
-    logical, intent(in) :: is_swap_order,is_negate_even
-    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
     logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
     logical, intent(in) :: is_negate_even ! negate every other element of the input array?
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
@@ -563,9 +562,9 @@ module mod_fft
     integer , intent(in   ), dimension(3) :: n       ! dimensions of input/output array
     integer , intent(in   ) :: idir                  ! array direction where the transform is taken
     real(rp), intent(inout), dimension(:,:,:) :: arr ! input/output array
-    real(rp), allocatable, dimension(:,:,:) :: arr_tmp ! needs to be alocatable actually!
     logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
     logical, intent(in) :: is_negate_even ! negate every other element of the input array?
+    real(rp), allocatable, dimension(:,:,:) :: arr_tmp
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
