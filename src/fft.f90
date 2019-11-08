@@ -343,13 +343,18 @@ module mod_fft
     case(1)
       if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
       if(is_swap_order) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr_tmp(ii,j,k) = arr(i,j,k)
             enddo
+          enddo
+        enddo
+        !$cuf kernel do(3) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
@@ -358,7 +363,7 @@ module mod_fft
         enddo
       endif
       if(is_negate_even) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
@@ -369,7 +374,7 @@ module mod_fft
           enddo
         enddo
       endif
-      !$cuf kernel do(2) <<<*,*>>>
+      !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
@@ -380,6 +385,11 @@ module mod_fft
               arr_tmp(ii,j,k) = arr(2*(nn-ii)-1+1,j,k)
             endif
           enddo
+        enddo
+      enddo
+      !$cuf kernel do(3) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
           do i=1,n(1)
             ii = i-1
             arr(i,j,k) = arr_tmp(ii,j,k)
@@ -409,13 +419,13 @@ module mod_fft
     integer :: i,j,k,ii,nn
     attributes(device) :: arr
     attributes(device) :: arr_tmp
-    real(rp) :: arg
+    real(rp) :: arg,carg,sarg
     !
     nn = n(idir)-2
     select case(idir)
     case(1)
       if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
-      !$cuf kernel do(2) <<<*,*>>>
+      !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
           do i=1,nn+2,2
@@ -427,9 +437,17 @@ module mod_fft
             !                         2.*exp(-ri_unit*pi*ii/(2.*nn))*cmplx(arr(i,j,k),arr(i+1,j,k),rp) &
             !                        ) ! = 0 for ii=0
             arg = -pi*ii/(2.*nn)
-            arr_tmp(ii   ,j,k) =  2.*(cos(arg)*arr(i,j,k) - sin(arg)*arr(i+1,j,k))
-            arr_tmp(nn-ii,j,k) = -2.*(sin(arg)*arr(i,j,k) + cos(arg)*arr(i+1,j,k))
+            !call sincos(arg,sarg,carg)
+            carg = cos(arg)
+            sarg = sin(arg)
+            arr_tmp(ii   ,j,k) =  2.*(carg*arr(i,j,k) - sarg*arr(i+1,j,k))
+            arr_tmp(nn-ii,j,k) = -2.*(sarg*arr(i,j,k) + carg*arr(i+1,j,k))
           enddo
+        enddo
+      enddo
+      !$cuf kernel do(3) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
           do i=1,nn
             ii = i-1
             arr(i,j,k) = arr_tmp(ii,j,k)
@@ -437,13 +455,18 @@ module mod_fft
         enddo
       enddo
       if(is_swap_order) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr_tmp(ii,j,k) = arr(i,j,k) ! redundant
             enddo
+          enddo
+        enddo
+        !$cuf kernel do(3) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
@@ -452,7 +475,7 @@ module mod_fft
         enddo
       endif
       if(is_negate_even) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
@@ -485,20 +508,25 @@ module mod_fft
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
-    real(rp) :: arg
+    real(rp) :: arg,carg,sarg
     !
     nn = n(idir)-2
     select case(idir)
     case(1)
       if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
       if(is_swap_order) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr_tmp(ii,j,k) = arr(i,j,k)
             enddo
+          enddo
+        enddo
+        !$cuf kernel do(3) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
@@ -507,7 +535,7 @@ module mod_fft
         enddo
       endif
       if(is_negate_even) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
@@ -523,14 +551,27 @@ module mod_fft
         do j=1,n(2)
           arr(nn+1,j,k) = 0.
           arr(nn+2,j,k) = 0.
+        enddo
+      enddo
+      !$cuf kernel do(3) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
           do i=1,nn+2,2
             ii = (i-1)/2
             !arr_tmp(2*ii  ,j,k)  = real( 1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
             !arr_tmp(2*ii+1,j,k)  = aimag(1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
             arg = pi*ii/(2.*nn)
-            arr_tmp(2*ii  ,j,k) = 1.*(cos(arg)*arr(ii+1,j,k) + sin(arg)*arr(nn-ii+1,j,k))
-            arr_tmp(2*ii+1,j,k) = 1.*(sin(arg)*arr(ii+1,j,k) - cos(arg)*arr(nn-ii+1,j,k))
+            !call sincos(arg,sarg,carg)
+            carg = cos(arg)
+            sarg = sin(arg)
+            arr_tmp(2*ii  ,j,k) = 1.*(carg*arr(ii+1,j,k) + sarg*arr(nn-ii+1,j,k))
+            arr_tmp(2*ii+1,j,k) = 1.*(sarg*arr(ii+1,j,k) - carg*arr(nn-ii+1,j,k))
           enddo
+        enddo
+      enddo
+      !$cuf kernel do(3) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
           do i=1,nn+2
             ii = i-1
             arr(i,j,k) = arr_tmp(ii,j,k)
@@ -573,13 +614,18 @@ module mod_fft
     select case(idir)
     case(1)
       if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
-      !$cuf kernel do(2) <<<*,*>>>
+      !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
           do i=1,n(1)
             ii = i-1
             arr_tmp(ii,j,k) = arr(i,j,k)
           enddo
+        enddo
+      enddo
+      !$cuf kernel do(3) <<<*,*>>>
+      do k=1,n(3)
+        do j=1,n(2)
           do i=1,n(1)
             ii = i-1
             if(    ii.le.(nn-1)/2) then
@@ -591,13 +637,18 @@ module mod_fft
         enddo
       enddo
       if(is_swap_order) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr_tmp(ii,j,k) = arr(i,j,k)
             enddo
+          enddo
+        enddo
+        !$cuf kernel do(3) <<<*,*>>>
+        do k=1,n(3)
+          do j=1,n(2)
             do i=1,nn
               ii = i-1
               arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
@@ -606,7 +657,7 @@ module mod_fft
         enddo
       endif
       if(is_negate_even) then
-        !$cuf kernel do(2) <<<*,*>>>
+        !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
             do i=1,nn
