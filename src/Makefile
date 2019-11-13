@@ -13,7 +13,7 @@ TARGET = cans
 #
 OBJ = bound.o chkdiv.o chkdt.o common_mpi.o correc.o debug.o fft.o fftw.o fillps.o initflow.o initgrid.o initmpi.o initsolver.o load.o main.o mom.o momd.o moms.o output.o param.o rk.o sanity.o solver.o decomp_2d.o io.o types.o nvtx.o
 #
-LIBS = -lfftw3 -lfftw3_threads -L/usr/local/cuda/lib64 -lnvToolsExt -Mcudalib=cufft
+LIBS = -lfftw3 -lfftw3_threads -Mcudalib=cufft -L/usr/local/cuda/lib64 -lnvToolsExt 
 #
 all: $(TARGET)
 #
