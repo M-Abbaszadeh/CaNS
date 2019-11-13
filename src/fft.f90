@@ -416,15 +416,25 @@ module mod_fft
     logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
     logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp
+    real(rp), allocatable, dimension(:,:  ) :: arr_sincos
     integer :: i,j,k,ii,nn
     attributes(device) :: arr
     attributes(device) :: arr_tmp
+    attributes(device) :: arr_sincos
     real(rp) :: arg,carg,sarg
     !
     nn = n(idir)-2
     select case(idir)
     case(1)
-      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      if(.not.allocated(arr_tmp   )) allocate(arr_tmp(   0:n(idir)-1,n(2),n(3)))
+      if(.not.allocated(arr_sincos)) allocate(arr_sincos(2,0:nn/2))
+      !$cuf kernel do(1) <<<*,*>>>
+      do i=1,nn+2,2
+        ii = (i-1)/2
+        arg = -pi*ii/(2.*nn)
+        arr_sincos(1,ii) = sin(arg)
+        arr_sincos(2,ii) = cos(arg)
+      enddo
       !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
@@ -436,10 +446,10 @@ module mod_fft
             !arr_tmp(nn-ii,j,k) = - aimag( &
             !                         2.*exp(-ri_unit*pi*ii/(2.*nn))*cmplx(arr(i,j,k),arr(i+1,j,k),rp) &
             !                        ) ! = 0 for ii=0
-            arg = -pi*ii/(2.*nn)
+            !arg = -pi*ii/(2.*nn)
             !call sincos(arg,sarg,carg)
-            carg = cos(arg)
-            sarg = sin(arg)
+            carg = arr_sincos(2,ii)!cos(arg)
+            sarg = arr_sincos(1,ii)!sin(arg)
             arr_tmp(ii   ,j,k) =  2.*(carg*arr(i,j,k) - sarg*arr(i+1,j,k))
             arr_tmp(nn-ii,j,k) = -2.*(sarg*arr(i,j,k) + carg*arr(i+1,j,k))
           enddo
@@ -505,15 +515,18 @@ module mod_fft
     logical, intent(in) :: is_swap_order  ! swap order of the elements of the input array? (for DST)
     logical, intent(in) :: is_negate_even ! negate every other element of the input array?
     real(rp), allocatable, dimension(:,:,:) :: arr_tmp
+    real(rp), allocatable, dimension(:,:  ) :: arr_sincos
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
+    attributes(device) :: arr_sincos
     real(rp) :: arg,carg,sarg
     !
     nn = n(idir)-2
     select case(idir)
     case(1)
-      if(.not.allocated(arr_tmp)) allocate(arr_tmp(0:n(idir)-1,n(2),n(3)))
+      if(.not.allocated(arr_tmp   )) allocate(arr_tmp(   0:n(idir)-1,n(2),n(3)))
+      if(.not.allocated(arr_sincos)) allocate(arr_sincos(2,0:nn/2))
       if(is_swap_order) then
         !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
@@ -553,6 +566,13 @@ module mod_fft
           arr(nn+2,j,k) = 0.
         enddo
       enddo
+      !$cuf kernel do(1) <<<*,*>>>
+      do i=1,nn+2,2
+        ii = (i-1)/2
+        arg = pi*ii/(2.*nn)
+        arr_sincos(1,ii) = sin(arg)
+        arr_sincos(2,ii) = cos(arg)
+      enddo
       !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
@@ -560,10 +580,10 @@ module mod_fft
             ii = (i-1)/2
             !arr_tmp(2*ii  ,j,k)  = real( 1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
             !arr_tmp(2*ii+1,j,k)  = aimag(1.*exp(ri_unit*pi*ii/(2.*nn))*(arr(ii+1,j,k)-ri_unit*arr(nn-ii+1,j,k)))
-            arg = pi*ii/(2.*nn)
+            !arg = pi*ii/(2.*nn)
             !call sincos(arg,sarg,carg)
-            carg = cos(arg)
-            sarg = sin(arg)
+            carg = arr_sincos(2,ii)!cos(arg)
+            sarg = arr_sincos(1,ii)!sin(arg)
             arr_tmp(2*ii  ,j,k) = 1.*(carg*arr(ii+1,j,k) + sarg*arr(nn-ii+1,j,k))
             arr_tmp(2*ii+1,j,k) = 1.*(sarg*arr(ii+1,j,k) - carg*arr(nn-ii+1,j,k))
           enddo
