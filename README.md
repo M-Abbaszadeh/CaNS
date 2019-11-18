@@ -27,6 +27,8 @@ P. Costa. *A FFT-based finite-difference solver for massively-parallel direct nu
 
 20/11/2019 -- Different simulation termination criteria, and a constant body force density have been added as option in the input file `dns.in`, see [`src/INFO_INPUT.md`](src/INFO_INPUT.md) for more details.
 
+## Features
+
 Some features are:
 
  * Hybrid MPI/OpenMP parallelization

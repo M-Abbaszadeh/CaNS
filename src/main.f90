@@ -41,7 +41,7 @@ program cans
   use mod_param      , only: itot,jtot,ktot,lx,ly,lz,dx,dy,dz,dxi,dyi,dzi,uref,lref,rey,visc,small, &
                              cbcvel,bcvel,cbcpre,bcpre, &
                              icheck,iout0d,iout1d,iout2d,iout3d,isave, &
-                             nstep,restart, &
+                             nstep,time_max,tw_max,stop_type,restart, &
                              rkcoeff, &
                              datadir, &
                              cfl,     &
@@ -119,9 +119,10 @@ program cans
   real(rp) :: dt12,dt12av,dt12min,dt12max
 #endif
   real(rp) :: f1d,f2d,f3d
+  real(rp) :: twi,tw
   character(len=7) :: fldnum
   integer :: kk
-  logical :: kill
+  logical :: is_done,kill
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
@@ -135,6 +136,7 @@ program cans
   !$call omp_set_num_threads(nthreadsmax)
   call initmpi(ng,cbcpre)
   n  = (/imax,jmax,ktot/) ! now set in initmpi
+  twi = MPI_WTIME()
   !
   ! allocate memory
   !
@@ -332,7 +334,7 @@ program cans
 #ifdef USE_NVTX
   call nvtxStartRange("sanity", 3)
 #endif
-  call test_sanity(ng,n,dims,cbcvel,cbcpre,bcvel,bcpre,is_outflow,is_forced, &
+  call test_sanity(ng,n,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_outflow,is_forced, &
                    dli,dzci,dzfi)
 #ifdef USE_NVTX
   call nvtxEndRange
@@ -423,7 +425,8 @@ program cans
   ! main loop
   !
   if(myid.eq.0) print*, '*** Calculation loop starts now ***'
-  do while(istep.lt.nstep)
+  is_done = .false.
+  do while(.not.is_done)
 #ifdef USE_NVTX
     call nvtxStartRange("timestep", istep)
 #endif
@@ -714,6 +717,19 @@ program cans
       #endif
     enddo
     dpdl(:) = -dpdl(:)*dti
+    !
+    ! check if simulation stopping criteria
+    !
+    if(stop_type(1)) then ! maximum number of time steps reached
+      if(istep.gt.nstep   ) is_done = is_done.or..true.
+    endif
+    if(stop_type(2)) then ! maximum simulation time reached
+      if(time .gt.time_max) is_done = is_done.or..true.
+    endif
+    if(stop_type(3)) then ! maximum wall-clock time reached
+      tw = (MPI_WTIME()-twi)/3600.
+      if(tw   .gt.tw_max  ) is_done = is_done.or..true.
+    endif
     if(mod(istep,icheck).eq.0) then
       if(myid.eq.0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,visc,u,v,w,dtmax)
@@ -760,7 +776,7 @@ program cans
     if(mod(istep,iout3d).eq.0) then
       include 'out3d.h90'
     endif
-    if(mod(istep,isave ).eq.0) then
+    if(mod(istep,isave ).eq.0.or.is_done) then
       ristep = 1.*istep
       call load('w',trim(datadir)//'fld.bin',n,u(1:n(1),1:n(2),1:n(3)), &
                                                v(1:n(1),1:n(2),1:n(3)), &
