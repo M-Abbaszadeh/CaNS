@@ -46,6 +46,18 @@ module mod_sanity
     return
   end subroutine test_sanity
   !
+  subroutine chk_stop_type(stop_type,passed)
+  implicit none
+  logical, intent(in), dimension(3) :: stop_type
+  logical, intent(out) :: passed
+  passed = .true.
+  if(.not.any(stop_type(:))) then
+    if(myid.eq.0) print*, 'ERROR: stopping criterion not chosen.'
+    passed = .false.
+  endif
+  return 
+  end subroutine chk_stop_type
+  !
   subroutine chk_dims(ng,dims,passed)
     implicit none
     integer, intent(in), dimension(3) :: ng

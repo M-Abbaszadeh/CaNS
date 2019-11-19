@@ -1,6 +1,6 @@
 module mod_mom
   use mpi
-  use mod_param     , only: dims
+  use mod_param     , only: dims, bforce
   use mod_common_mpi, only: ierr
   use mod_types
   implicit none
@@ -22,6 +22,7 @@ module mod_mom
     real(rp) :: taux2d,taux3d
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(rp) :: bforcex,bforcey,bforcez
     real(rp) :: tauy1d,tauy3d
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
@@ -32,6 +33,9 @@ module mod_mom
 #endif
     integer :: nxg,nyg,nzg
     !
+    bforcex = bforce(1)
+    bforcey = bforce(2)
+    bforcez = bforce(3)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,(8,8,8)>>>
 #else
@@ -39,7 +43,7 @@ module mod_mom
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
     !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi,bforcex,bforcey,bforcez)
 #endif
     do k=1,nz
       kp = k + 1
@@ -129,9 +133,9 @@ module mod_mom
           wvkm  = wvkm*( w(i,j,km)+w(i,jp,km) )
           dvdt_temp = dvdt_temp + dzfi(k)*( -wvkp + wvkm )
           !
-          dudt(i,j,k) = dudt_temp
-          dvdt(i,j,k) = dvdt_temp
-          dwdt(i,j,k) = dwdt_temp
+          dudt(i,j,k) = dudt_temp + bforcex
+          dvdt(i,j,k) = dvdt_temp + bforcey
+          dwdt(i,j,k) = dwdt_temp + bforcez
         enddo
       enddo
     enddo
@@ -258,6 +262,7 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
     real(rp) :: dudxp,dudxm,dudyp,dudym,dudzp,dudzm
+    real(rp) :: bforcex
     real(rp) :: taux2d,taux3d
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dudt,dzci,dzfi,dzflzi
@@ -265,6 +270,7 @@ module mod_mom
 #endif
     integer :: nxg,nyg,nzg
     !
+    bforcex = bforce(1)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -273,6 +279,7 @@ module mod_mom
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
     !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi,bforcex)
 #endif
     do k=1,nz
       kp = k + 1
@@ -300,7 +307,8 @@ module mod_mom
           !
           dudt(i,j,k) = dxi*(     -uuip + uuim ) + (dudxp-dudxm)*visc*dxi + &
                         dyi*(     -uvjp + uvjm ) + (dudyp-dudym)*visc*dyi + &
-                        dzfi(k)*( -uwkp + uwkm ) + (dudzp-dudzm)*visc*dzfi(k)
+                        dzfi(k)*( -uwkp + uwkm ) + (dudzp-dudzm)*visc*dzfi(k) + &
+                        bforcex
         enddo
       enddo
     enddo
@@ -358,6 +366,7 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(rp) :: bforcey
     real(rp) :: tauy1d,tauy3d
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dvdt,dzci,dzfi,dzflzi
@@ -365,6 +374,7 @@ module mod_mom
 #endif
     integer :: nxg,nyg,nzg
     !
+    bforcey = bforce(2)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -373,6 +383,7 @@ module mod_mom
     !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
     !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm) &
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dvdt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dvdt,dzci,dzfi,bforcey)
 #endif
     do k=1,nz
       kp = k + 1
@@ -400,7 +411,8 @@ module mod_mom
           !
           dvdt(i,j,k) = dxi*(     -uvip + uvim ) + (dvdxp-dvdxm)*visc*dxi+ &
                         dyi*(     -vvjp + vvjm ) + (dvdyp-dvdym)*visc*dyi+ &
-                        dzfi(k)*( -wvkp + wvkm ) + (dvdzp-dvdzm)*visc*dzfi(k)
+                        dzfi(k)*( -wvkp + wvkm ) + (dvdzp-dvdzm)*visc*dzfi(k)+ &
+                        bforcey
         enddo
       enddo
     enddo
@@ -457,6 +469,7 @@ module mod_mom
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
+    real(rp) :: bforcez
     real(rp) :: tauz1d,tauz2d
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dwdt,dzci,dzfi,dzflzi
@@ -464,6 +477,7 @@ module mod_mom
 #endif
     integer :: nxg,nyg,nzg
     !
+    bforcez = bforce(3)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
@@ -471,7 +485,7 @@ module mod_mom
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
     !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dwdt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dwdt,dzci,dzfi,bforcez)
 #endif
     do k=1,nz
       kp = k + 1
@@ -499,7 +513,8 @@ module mod_mom
           !
           dwdt(i,j,k) = dxi*(     -uwip + uwim ) + (dwdxp-dwdxm)*visc*dxi+ &
                         dyi*(     -vwjp + vwjm ) + (dwdyp-dwdym)*visc*dyi+ &
-                        dzci(k)*( -wwkp + wwkm ) + (dwdzp-dwdzm)*visc*dzci(k)
+                        dzci(k)*( -wwkp + wwkm ) + (dwdzp-dwdzm)*visc*dzci(k)+ &
+                        bforcez
         enddo
       enddo
     enddo

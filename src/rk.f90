@@ -1,7 +1,7 @@
 module mod_rk
   use mpi
   use mod_common_mpi, only: ierr
-  use mod_param, only: is_forced,velf,dims
+  use mod_param, only: is_forced,velf,dims,bforce
   use mod_debug, only: chkmean
   use mod_mom  , only: momxad,momyad,momzad,momxp,momyp,momzp,momp,momxyzad
   use mod_momd , only: momxpd,momypd,momzpd,momxa,momya,momza
@@ -47,6 +47,7 @@ module mod_rk
     real(rp) :: taux2d,taux3d
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
     real(rp) :: dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm
+    real(rp) :: bforcex,bforcey,bforcez
     real(rp) :: tauy1d,tauy3d
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
     real(rp) :: dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm
@@ -63,6 +64,9 @@ module mod_rk
     nx = n(1)
     ny = n(2)
     nz = n(3)
+    bforcex = bforce(1)
+    bforcey = bforce(2)
+    bforcez = bforce(3)
     !
 #ifdef USE_NVTX
     call nvtxStartRange("momxyzad",5)
@@ -75,7 +79,7 @@ module mod_rk
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
     !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi,bforcex,bforcey,bforcez)
 #endif
     do k=1,nz
       kp = k + 1
@@ -167,9 +171,9 @@ module mod_rk
           wvkm  = wvkm*( w(i,j,km)+w(i,jp,km) )
           dvdtrk_temp = dvdtrk_temp + dzfi(k)*( -wvkp + wvkm )
           !
-          dudtrk(i,j,k) = dudtrk_temp
-          dvdtrk(i,j,k) = dvdtrk_temp
-          dwdtrk(i,j,k) = dwdtrk_temp
+          dudtrk(i,j,k) = dudtrk_temp + bforcex
+          dvdtrk(i,j,k) = dvdtrk_temp + bforcey
+          dwdtrk(i,j,k) = dwdtrk_temp + bforcez
         enddo
       enddo
     enddo
