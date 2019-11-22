@@ -49,7 +49,7 @@ program cans
                              imax,jmax,dims, &
                              nthreadsmax, &
                              gr, &
-                             is_outflow,no_outflow,is_forced, &
+                             is_outflow,no_outflow,is_forced,bforce, &
                              n,ng,l,dl,dli, &
                              read_input
   use mod_sanity     , only: test_sanity
@@ -111,7 +111,7 @@ program cans
   attributes(managed) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,lambdaxyp,ap,bp,cp,rhsbp
   attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_A,dvdtrk_A,dwdtrk_A,dudtrk_B,dvdtrk_B,dwdtrk_B
 #endif
-  real(rp) :: meanvel
+  real(rp) :: meanvel,meanvelu,meanvelv,meanvelw
   real(rp), dimension(3) :: dpdl
   !real(rp), allocatable, dimension(:) :: var
   real(rp), dimension(10) :: var
@@ -738,7 +738,7 @@ program cans
       if(dtmax.lt.small) then
         if(myid.eq.0) print*, 'ERROR: timestep is too small.'
         if(myid.eq.0) print*, 'Aborting...'
-        istep = nstep + 1 ! i.e. exit main loop
+        is_done = .true.
         kill = .true.
       endif
       dti = 1./dt
@@ -746,7 +746,7 @@ program cans
       if(divmax.gt.small.or.divtot.ne.divtot) then
         if(myid.eq.0) print*, 'ERROR: maximum divergence is too large.'
         if(myid.eq.0) print*, 'Aborting...'
-        istep = nstep + 1 ! i.e. exit main loop
+        is_done = .true.
         kill = .true.
       endif
     endif
@@ -759,10 +759,25 @@ program cans
       var(2) = dt
       var(3) = time
       call out0d(trim(datadir)//'time.out',3,var)
-      if(any(is_forced(:))) then
+      !
+      if(any(is_forced(:)).or.any(abs(bforce(:)).gt.0.)) then
+        meanvelu = 0.
+        meanvelv = 0.
+        meanvelw = 0.
+        if(is_forced(1).or.abs(bforce(1)).gt.0.) then
+          call chkmean(n,dzf/lz,up,meanvelu)
+        endif
+        if(is_forced(2).or.abs(bforce(2)).gt.0.) then
+          call chkmean(n,dzf/lz,vp,meanvelv)
+        endif
+        if(is_forced(3).or.abs(bforce(3)).gt.0.) then
+          call chkmean(n,dzc/lz,wp,meanvelw)
+        endif
+        if(.not.any(is_forced(:))) dpdl(:) = -bforce(:) ! constant pressure gradient
         var(1)   = time
         var(2:4) = dpdl(1:3)
-        call out0d(trim(datadir)//'forcing.out',4,var)
+        var(5:7) = (/meanvelu,meanvelv,meanvelw/)
+        call out0d(trim(datadir)//'forcing.out',7,var)
       endif
       !deallocate(var)
     endif

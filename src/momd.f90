@@ -1,6 +1,6 @@
 module mod_momd
   use mpi
-  use mod_param     , only: dims
+  use mod_param     , only: dims, bforce
   use mod_common_mpi, only: ierr
   use mod_types
   !@cuf use cudafor
@@ -17,18 +17,20 @@ module mod_momd
     real(rp), dimension(:,:,:), intent(out) :: dudt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uuip,uuim,uvjp,uvjm,uwkp,uwkm
+    real(rp) :: bforcex
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dudt,dzci,dzfi
     integer :: istat
 #endif
     !
+    bforcex = bforce(1)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,u,v,w,dudt,dzci,dzfi)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,u,v,w,dudt,dzci,dzfi,bforcex)
 #endif
     do k=1,nz
       kp = k + 1
@@ -50,7 +52,8 @@ module mod_momd
           !
           dudt(i,j,k) = dxi*(     -uuip + uuim ) + &
                         dyi*(     -uvjp + uvjm ) + &
-                        dzfi(k)*( -uwkp + uwkm )
+                        dzfi(k)*( -uwkp + uwkm ) + &
+                        bforcex
         enddo
       enddo
     enddo
@@ -70,18 +73,20 @@ module mod_momd
     real(rp), dimension(:,:,:), intent(out) :: dvdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uvip,uvim,vvjp,vvjm,wvkp,wvkm
+    real(rp) :: bforcey
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dvdt,dzci,dzfi
     integer :: istat
 #endif
     !
+    bforcey = bforce(2)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dvdt)
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dvdt,bforcey)
 #endif
     do k=1,nz
       kp = k + 1
@@ -103,7 +108,8 @@ module mod_momd
           !
           dvdt(i,j,k) = dxi*(     -uvip + uvim ) + &
                         dyi*(     -vvjp + vvjm ) + &
-                        dzfi(k)*( -wvkp + wvkm )
+                        dzfi(k)*( -wvkp + wvkm ) + &
+                        bforcey
         enddo
       enddo
     enddo
@@ -123,17 +129,20 @@ module mod_momd
     real(rp), dimension(:,:,:), intent(out) :: dwdt
     integer :: im,ip,jm,jp,km,kp,i,j,k
     real(rp) :: uwip,uwim,vwjp,vwjm,wwkp,wwkm
+    real(rp) :: bforcez
 #ifdef USE_CUDA
     attributes(managed) :: u,v,w,dwdt,dzci,dzfi
     integer :: istat
 #endif
     !
+    bforcez = bforce(3)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dwdt,bforcez)
     !$OMP SHARED(nx,ny,nz,dxi,dyi,dzci,dzfi,u,v,w,dwdt)
 #endif
     do k=1,nz
@@ -156,7 +165,8 @@ module mod_momd
           !
           dwdt(i,j,k) = dxi*(     -uwip + uwim ) + &
                         dyi*(     -vwjp + vwjm ) + &
-                        dzci(k)*( -wwkp + wwkm )
+                        dzci(k)*( -wwkp + wwkm ) + &
+                        bforcez
         enddo
       enddo
     enddo
