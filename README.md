@@ -17,9 +17,11 @@ CaNS now allows for choosing an implicit temporal discretization of the diffusio
 
 **References**
 
-**Method and CPU code**: P. Costa. *A FFT-based finite-difference solver for massively-parallel direct numerical simulations of turbulent flows.* *Computers & Mathematics with Applications* 76: 1853--1862 (2018). [doi:10.1016/j.camwa.2018.07.034](https://doi.org/10.1016/j.camwa.2018.07.034) [[arXiv preprint]](https://arxiv.org/abs/1802.10323)
+**Method and CPU code**:  
+P. Costa. *A FFT-based finite-difference solver for massively-parallel direct numerical simulations of turbulent flows.* *Computers & Mathematics with Applications* 76: 1853--1862 (2018). [doi:10.1016/j.camwa.2018.07.034](https://doi.org/10.1016/j.camwa.2018.07.034) [[arXiv preprint]](https://arxiv.org/abs/1802.10323)
 
-**GPU extension**: P. Costa, E. Phillips, L. Brandt & M. Fatica, *GPU acceleration of CaNS for massively-parallel direct numerical simulations of canonical fluid flows* *Computers & Mathematics with Applications* in press (2020). [[arXiv preprint]](https://arxiv.org/abs/2001.05234)
+**GPU extension**:  
+P. Costa, E. Phillips, L. Brandt & M. Fatica, *GPU acceleration of CaNS for massively-parallel direct numerical simulations of canonical fluid flows* *Computers & Mathematics with Applications* in press (2020). [[arXiv preprint]](https://arxiv.org/abs/2001.05234)
 
 ## News
 
