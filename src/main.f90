@@ -42,10 +42,10 @@ program cans
                              cbcvel,bcvel,cbcpre,bcpre, &
                              icheck,iout0d,iout1d,iout2d,iout3d,isave, &
                              nstep,time_max,tw_max,stop_type,restart, &
-                             rkcoeff, &
-                             datadir, &
-                             cfl,     &
-                             inivel,  &
+                             rkcoeff,   &
+                             datadir,   &
+                             cfl,dtmin, &
+                             inivel,    &
                              imax,jmax,dims, &
                              nthreadsmax, &
                              gr, &
@@ -400,7 +400,7 @@ program cans
 #ifdef USE_NVTX
   call nvtxEndRange
 #endif
-  dt = cfl*dtmax
+  dt = min(cfl*dtmax,dtmin)
   if(myid.eq.0) print*, 'dtmax = ', dtmax, 'dt = ',dt
   dti = 1./dt
   kill = .false.
@@ -733,7 +733,7 @@ program cans
     if(mod(istep,icheck).eq.0) then
       if(myid.eq.0) print*, 'Checking stability and divergence...'
       call chkdt(n,dl,dzci,dzfi,visc,u,v,w,dtmax)
-      dt  = cfl*dtmax
+      dt  = min(cfl*dtmax,dtmin)
       if(myid.eq.0) print*, 'dtmax = ', dtmax, 'dt = ',dt
       if(dtmax.lt.small) then
         if(myid.eq.0) print*, 'ERROR: timestep is too small.'
