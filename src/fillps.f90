@@ -25,7 +25,7 @@ module mod_fillps
     real(rp) :: dtidxi,dtidyi!,dtidzi
     !real(rp), dimension(0:n(3)+1) :: dtidzfi
 #ifdef USE_CUDA
-    attributes(managed) :: up,vp,wp,p,dtidzfi,dzfi
+    attributes(managed) :: up,vp,wp,p,dzfi!,dtidzfi
     integer :: istat
 #endif
     integer :: i,j,k,im,jm,km
