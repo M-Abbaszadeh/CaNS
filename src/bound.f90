@@ -366,7 +366,8 @@ module mod_bound
             !$cuf kernel do(2) <<<*,*>>>
             do k=lbound(p,3),ubound(p,3)
               do j=lbound(p,2),ubound(p,2)
-                p(n+1,j,k) = 2.*factor + p(n-1,j,k)
+                p(n,j,k) = 1.*factor + p(n-1,j,k)
+                p(n+1,j,k) = p(n,j,k) ! not needed
               enddo
             enddo
             #else
@@ -397,7 +398,8 @@ module mod_bound
             !$cuf kernel do(2) <<<*,*>>>
             do k=lbound(p,3),ubound(p,3)
               do i=lbound(p,1),ubound(p,1)
-                p(i,n+1,k) = 2.*factor + p(i,n-1,k)
+                p(i,n,k) = 1.*factor + p(i,n-1,k)
+                p(i,n+1,k) = p(i,n,k) ! not needed
               enddo
             enddo
             #else
@@ -428,7 +430,8 @@ module mod_bound
             !$cuf kernel do(2) <<<*,*>>>
             do j=lbound(p,2),ubound(p,2)
               do i=lbound(p,1),ubound(p,1)
-                p(i,j,n+1) = 2.*factor + p(i,j,n-1)
+                p(i,j,n) = 1.*factor + p(i,j,n-1)
+                p(i,j,n+1) = p(i,j,n) ! not needed
               enddo
             enddo
             #else
