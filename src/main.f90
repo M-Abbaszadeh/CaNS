@@ -310,6 +310,10 @@ program cans
       write(99,'(5E15.7)') 0.,zf(kk),zc(kk),dzf(kk),dzc(kk)
     enddo
     close(99)
+    open(99,file=trim(datadir)//'geometry.out')
+      write(99,*) ng(1),ng(2),ng(3) 
+      write(99,*) l(1),l(2),l(3) 
+    close(99)
   endif
 #ifdef USE_CUDA
   istat = cudaMemPrefetchAsync( dzci, size(dzci), mydev, 0 )

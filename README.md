@@ -31,6 +31,8 @@ P. Costa, E. Phillips, L. Brandt & M. Fatica, *GPU acceleration of CaNS for mass
 
 20/11/2019 -- Different simulation termination criteria, and a constant body force density have been added as option in the input file `dns.in`, see [`src/INFO_INPUT.md`](src/INFO_INPUT.md) for more details.
 
+04/05/2020 -- Visualization of binary field data has been made easier, see [`src/INFO_VISU.md`](src/INFO_VISU.md) for more details.
+
 ## Features
 
 Some features are:
