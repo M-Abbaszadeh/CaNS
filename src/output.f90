@@ -344,7 +344,7 @@ module mod_output
     ng(:) = n(:)
     ng(1:2) = n(1:2)*dims(1:2)
     iunit = 10
-    select case(idir) ! streamwise direction
+    select case(idir)
     case(3)
     case(2)
       p = ng(1)
@@ -429,9 +429,9 @@ module mod_output
       uv(:,:) = 0.
       uw(:,:) = 0.
       do k=1,n(3)
-        kk = ijk_start(3) + k
+        kk =  k
         do j=1,n(2)
-          jj = ijk_start(2) + j
+          jj = j+coord(2)*n(2)
           um(jj,kk) = 0.
           vm(jj,kk) = 0.
           wm(jj,kk) = 0.
@@ -441,7 +441,7 @@ module mod_output
           uv(jj,kk) = 0.
           uw(jj,kk) = 0.
           do i=1,n(1)
-            ii = ijk_start(1) + i
+            ii = i+coord(1)*n(1)
             um(jj,kk) = um(jj,kk) + u(i,j,k)
             vm(jj,kk) = vm(jj,kk) + 0.5*(v(i,j-1,k)+v(i,j,k))
             wm(jj,kk) = wm(jj,kk) + 0.5*(w(i,j,k-1)+w(i,j,k))
@@ -485,5 +485,6 @@ module mod_output
       endif
       deallocate(um,vm,wm,u2,v2,w2,vw,uv)
     end select
+    return
   end subroutine out2d_2
 end module mod_output
