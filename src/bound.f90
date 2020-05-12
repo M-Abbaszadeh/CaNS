@@ -111,11 +111,11 @@ module mod_bound
     return
   end subroutine boundp
   !
-  subroutine set_bc(ctype,ibound,n,idir,stag,rvalue,dr,p)
+  subroutine set_bc(ctype,ibound,n,idir,centered,rvalue,dr,p)
     implicit none
     character(len=1), intent(in) :: ctype
     integer , intent(in) :: ibound,n,idir
-    logical , intent(in) :: stag
+    logical , intent(in) :: centered
     real(rp), intent(in) :: rvalue,dr
     real(rp), intent(inout), dimension(0:,0:,0:) :: p
     real(rp) :: factor,sgn
@@ -125,11 +125,11 @@ module mod_bound
 #endif
     !
     factor = rvalue
-    if(ctype.eq.'D'.and.stag) then
+    if(ctype.eq.'D'.and.centered) then
       factor = 2.*factor
       sgn    = -1.
     endif
-    if(ctype.eq.'N'.and.stag) then
+    if(ctype.eq.'N'.and.centered) then
       if(    ibound.eq.0) then
         factor = -dr*factor
       elseif(ibound.eq.1) then
@@ -164,7 +164,7 @@ module mod_bound
         #endif
       end select
     case('D','N')
-      if(stag) then
+      if(centered) then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
@@ -251,7 +251,7 @@ module mod_bound
             #endif
           endif
         end select
-      elseif(.not.stag.and.ctype.eq.'D') then
+      elseif(.not.centered.and.ctype.eq.'D') then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
@@ -344,7 +344,7 @@ module mod_bound
             #endif
           endif
         end select
-      elseif(.not.stag.and.ctype.eq.'N') then
+      elseif(.not.centered.and.ctype.eq.'N') then
         select case(idir)
         case(1)
           if    (ibound.eq.0) then
@@ -476,7 +476,7 @@ module mod_bound
     select case(idir)
     case(1) ! x direction, right
       if(right.eq.MPI_PROC_NULL) then
-        i = n(1) + 1
+        i = n(1) + 0
         !$OMP PARALLEL DO DEFAULT(none) &
         !$OMP PRIVATE(j,k) &
         !$OMP SHARED(n,i,u,v,w,dx,dyi,dzfi)
@@ -489,7 +489,7 @@ module mod_bound
       endif
     case(2) ! y direction, back
       if(back.eq.MPI_PROC_NULL) then
-        j = n(2) + 1
+        j = n(2) + 0
         !$OMP PARALLEL DO DEFAULT(none) &
         !$OMP PRIVATE(i,k) &
         !$OMP SHARED(n,j,u,v,w,dy,dxi,dzfi)
@@ -501,7 +501,7 @@ module mod_bound
         !$OMP END PARALLEL DO
       endif
     case(3) ! z direction, top
-      k = n(3) + 1
+      k = n(3) + 0
       !$OMP PARALLEL DO DEFAULT(none) &
       !$OMP PRIVATE(i,j) &
       !$OMP SHARED(n,k,u,v,w,dzf,dxi,dyi)
