@@ -33,6 +33,8 @@ P. Costa, E. Phillips, L. Brandt & M. Fatica, *GPU acceleration of CaNS for mass
 
 04/05/2020 -- Visualization of binary field data has been made easier, see [`src/INFO_VISU.md`](src/INFO_VISU.md) for more details.
 
+28/06/2020 -- The `isoutflow` input parameter is not required anymore to define a zero-pressure outflow, and has been removed.
+
 ## Features
 
 Some features are:

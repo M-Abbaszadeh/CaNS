@@ -32,17 +32,49 @@ module mod_correc
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP SHARED(n,factori,factorj,dzci,dt,u,v,w,up,vp,wp,p) &
-    !$OMP PRIVATE(i,j,k,ip,jp,kp)
+    !$OMP SHARED(n,factori,u,up,p) &
+    !$OMP PRIVATE(i,j,k,ip)
 #endif
-    do k=1,n(3)
-      kp = k+1
-      do j=1,n(2)
-        jp = j+1
-        do i=1,n(1)
+    do k=0,n(3)+1
+      do j=0,n(2)+1
+        do i=0,n(1)
           ip = i+1
           u(i,j,k) = up(i,j,k) - factori*(   p(ip,j,k)-p(i,j,k))
+        enddo
+      enddo
+    enddo
+#ifndef USE_CUDA
+    !$OMP END PARALLEL DO
+#endif
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
+    !$OMP PARALLEL DO DEFAULT(none) &
+    !$OMP SHARED(n,factorj,v,vp,p) &
+    !$OMP PRIVATE(i,j,k,jp)
+#endif
+    do k=0,n(3)+1
+      do j=0,n(2)
+        jp = j+1
+        do i=0,n(1)+1
           v(i,j,k) = vp(i,j,k) - factorj*(   p(i,jp,k)-p(i,j,k))
+        enddo
+      enddo
+    enddo
+#ifndef USE_CUDA
+    !$OMP END PARALLEL DO
+#endif
+#ifdef USE_CUDA
+    !$cuf kernel do(3) <<<*,*>>>
+#else
+    !$OMP PARALLEL DO DEFAULT(none) &
+    !$OMP SHARED(n,dt,dzci,w,wp,p) &
+    !$OMP PRIVATE(i,j,k,kp)
+#endif
+    do k=0,n(3)
+      kp = k+1
+      do j=0,n(2)+1
+        do i=0,n(1)+1
           w(i,j,k) = wp(i,j,k) - dt*dzci(k)*(p(i,j,kp)-p(i,j,k))
         enddo
       enddo

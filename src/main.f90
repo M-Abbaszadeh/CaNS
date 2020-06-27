@@ -49,7 +49,7 @@ program cans
                              imax,jmax,dims, &
                              nthreadsmax, &
                              gr, &
-                             is_outflow,no_outflow,is_forced,bforce, &
+                             is_forced,bforce, &
                              n,ng,l,dl,dli, &
                              read_input
   use mod_sanity     , only: test_sanity
@@ -341,7 +341,7 @@ program cans
 #ifdef USE_NVTX
   call nvtxStartRange("sanity", 3)
 #endif
-  call test_sanity(ng,n,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_outflow,is_forced, &
+  call test_sanity(ng,n,dims,stop_type,cbcvel,cbcpre,bcvel,bcpre,is_forced, &
                    dli,dzci,dzfi)
 #ifdef USE_NVTX
   call nvtxEndRange
@@ -380,7 +380,7 @@ program cans
   istat = cudaMemPrefetchAsync( w, size(w), mydev, 0 )
   istat = cudaMemPrefetchAsync( p, size(p), mydev, 0 )
 #endif
-  call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
+  call bounduvw(cbcvel,n,bcvel,.false.,dl,dzc,dzf,u,v,w)
   call boundp(cbcpre,n,bcpre,dl,dzc,dzf,p)
   !
   ! post-process and write initial condition
@@ -618,7 +618,6 @@ program cans
       if(is_forced(1)) then
         call chkmean(n,dzflzi,up,meanvel)
         if(myid.eq.0) print*,'Mean u = ', meanvel
-      endif
       if(is_forced(2)) then
         call chkmean(n,dzflzi,vp,meanvel)
         if(myid.eq.0) print*,'Mean v = ', meanvel
@@ -634,7 +633,7 @@ program cans
       #ifdef USE_NVTX
       call nvtxStartRange("bounduvw", irk+5)
       #endif
-      call bounduvw(cbcvel,n,bcvel,no_outflow,dl,dzc,dzf,up,vp,wp) ! outflow BC only at final velocity
+      call bounduvw(cbcvel,n,bcvel,.false.,dl,dzc,dzf,up,vp,wp) ! outflow BC only at final velocity
       #ifdef USE_NVTX
       call nvtxEndRange
       call nvtxStartRange("fillps", irk+6)
@@ -664,7 +663,7 @@ program cans
       call nvtxEndRange
       call nvtxStartRange("bounduvw", irk+8)
       #endif
-      call bounduvw(cbcvel,n,bcvel,is_outflow,dl,dzc,dzf,u,v,w)
+      call bounduvw(cbcvel,n,bcvel,.true.,dl,dzc,dzf,u,v,w)
       #ifdef USE_NVTX
       call nvtxEndRange
       #endif
