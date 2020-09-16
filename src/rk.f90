@@ -78,8 +78,12 @@ module mod_rk
     !$OMP PARALLEL DO DEFAULT(none) &
     !$OMP PRIVATE(i,j,k,im,jm,km,ip,jp,kp) &
     !$OMP PRIVATE(uuip,uuim,uvjp,uvjm,uwkp,uwkm) &
-    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm) &
-    !$OMP SHARED(nx,ny,nz,dxi,dyi,dzi,visc,u,v,w,dudt,dzci,dzfi,bforcex,bforcey,bforcez)
+    !$OMP PRIVATE(uvip,uvim,vvjp,vvjm,wvkp,wvkm) &
+    !$OMP PRIVATE(uwip,uwim,vwjp,vwjm,wwkp,wwkm) &
+    !$OMP PRIVATE(dudxp,dudxm,dudyp,dudym,dudzp,dudzm,dudtrk_temp) &
+    !$OMP PRIVATE(dvdxp,dvdxm,dvdyp,dvdym,dvdzp,dvdzm,dvdtrk_temp) &
+    !$OMP PRIVATE(dwdxp,dwdxm,dwdyp,dwdym,dwdzp,dwdzm,dwdtrk_temp) &
+    !$OMP SHARED(nx,ny,nz,dxi,dyi,visc,u,v,w,dudtrk,dvdtrk,dwdtrk,dzci,dzfi,bforcex,bforcey,bforcez)
 #endif
     do k=1,nz
       kp = k + 1
@@ -303,8 +307,8 @@ module mod_rk
     !$cuf kernel do(3) <<<*,*>>>
 #else
     !$OMP PARALLEL DO DEFAULT(none) &
-    !$OMP PRIVATE(i,j,k) &
-    !$OMP SHARED(n,factor1,factor2,up,vp,wp,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko)
+    !$OMP PRIVATE(i,j,k,ip,jp,kp) &
+    !$OMP SHARED(n,factor1,factor2,factor12,dxi,dyi,dzci,u,v,w,p,up,vp,wp,dudtrk,dvdtrk,dwdtrk,dudtrko,dvdtrko,dwdtrko)
 #endif
     do k=1,n(3)
       kp = k + 1
