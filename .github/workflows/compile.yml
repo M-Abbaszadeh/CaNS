@@ -1,0 +1,38 @@
+name: compilation test
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+    - name: install software
+      run: |
+        sudo apt-get update; sudo apt-get install gfortran libopenmpi-dev libfftw3-dev
+        #
+        export NVHPC_SILENT=true
+        export NVHPC_INSTALL_TYPE=single
+        export NVHPC_INSTALL_DIR=$HOME/software/nvidia/hpc_sdk
+        wget https://developer.download.nvidia.com/hpc-sdk/nvhpc_2020_207_Linux_x86_64_cuda_11.0.tar.gz
+        tar xpzf nvhpc_2020_207_Linux_x86_64_cuda_11.0.tar.gz
+        ./nvhpc_2020_207_Linux_x86_64_cuda_11.0/install
+        rm -rf nvhpc_2020_207_Linux_x86_64_cuda_11.0*
+    - name: test compilation
+      run: |
+        NVVERSION=20.7
+        NVHPC_INSTALL_DIR=$HOME/software/nvidia/hpc_sdk
+        NVARCH=`uname -s`_`uname -m`; export NVARCH
+        NVCOMPILERS=$NVHPC_INSTALL_DIR; export NVCOMPILERS
+        MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/$NVVERSION/compilers/man; export MANPATH
+        PATH=$NVCOMPILERS/$NVARCH/$NVVERSION/compilers/bin:$PATH; export PATH
+        export PATH=$NVCOMPILERS/$NVARCH/$NVVERSION/comm_libs/mpi/bin:$PATH
+        export MANPATH=$MANPATH:$NVCOMPILERS/$NVARCH/$NVVERSION/comm_libs/mpi/man
+        export LD_LIBRARY_PATH=$NVHPC_INSTALL_DIR/Linux_x86_64/$NVVERSION/compilers/lib:$LD_LIBRARY_PATH
+        #
+        cd src/
+        make -j                            && make run && make clean
+        make -j OPT=-O3 OTH=               && make run && make clean
+        make -j OPT=-O3 OTH= OMP+=-fopenmp && make run && make clean
