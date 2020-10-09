@@ -25,14 +25,6 @@ P. Costa, E. Phillips, L. Brandt & M. Fatica, *GPU acceleration of CaNS for mass
 
 ## News
 
-08/02/2019 -- Input files corresponding to the simulations presented in the manuscript above have been added to `examples/`.
-
-16/05/2019 -- Now a single input file, `dns.in`, can be used to run the executable without recompiling the source. The `examples/` folder has been updated accordingly. The implementation with the former input files (not maintained) can be found in branch `old_input_files`.
-
-20/11/2019 -- Different simulation termination criteria, and a constant body force density have been added as option in the input file `dns.in`, see [`src/INFO_INPUT.md`](src/INFO_INPUT.md) for more details.
-
-04/05/2020 -- Visualization of binary field data has been made easier, see [`src/INFO_VISU.md`](src/INFO_VISU.md) for more details.
-
 28/06/2020 -- The `isoutflow` input parameter is not required anymore to define a zero-pressure outflow, and has been removed.
 
 ## Features
@@ -96,7 +88,7 @@ Run the executable with `mpirun` with a number of tasks and shared threads compl
 
 ### Visualizing field data
 
-See `src/INFO_VISU.md`.
+See `[src/INFO_VISU.md](src/INFO_VISU.md)`.
 
 ## Notes
 
