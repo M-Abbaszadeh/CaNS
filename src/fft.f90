@@ -370,13 +370,10 @@ module mod_fft
       !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
-          do i=1,n(1)
+          do i=1,nn/2
             ii = i-1
-            if(    ii.le.(nn-1)/2) then
-              arr_tmp(ii,j,k) = arr(2*ii+1       ,j,k)
-            else
-              arr_tmp(ii,j,k) = arr(2*(nn-ii)-1+1,j,k)
-            endif
+            arr_tmp(ii     ,j,k) = arr(2*ii+1          ,j,k)
+            arr_tmp(ii+nn/2,j,k) = arr(2*(nn-(ii+nn/2)),j,k)
           enddo
         enddo
       enddo
@@ -624,13 +621,10 @@ module mod_fft
       !$cuf kernel do(3) <<<*,*>>>
       do k=1,n(3)
         do j=1,n(2)
-          do i=1,n(1)
+          do i=1,nn/2
             ii = i-1
-            if(    ii.le.(nn-1)/2) then
-              arr(2*ii+1       ,j,k) = arr_tmp(ii,j,k)
-            else
-              arr(2*(nn-ii)-1+1,j,k) = arr_tmp(ii,j,k)
-            endif
+            arr(2*ii+1          ,j,k) = arr_tmp(ii     ,j,k)
+            arr(2*(nn-(ii+nn/2)),j,k) = arr_tmp(ii+nn/2,j,k)
           enddo
         enddo
       enddo
