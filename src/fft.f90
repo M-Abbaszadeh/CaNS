@@ -337,6 +337,7 @@ module mod_fft
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
+    real(rp) :: tmp
     !
     nn = n(idir)
     select case(idir)
@@ -346,18 +347,10 @@ module mod_fft
         !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr_tmp(ii,j,k) = arr(i,j,k)
-            enddo
-          enddo
-        enddo
-        !$cuf kernel do(3) <<<*,*>>>
-        do k=1,n(3)
-          do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            do i=1,nn/2
+              tmp             = arr(i     ,j,k)
+              arr(i     ,j,k) = arr(nn-i+1,j,k)
+              arr(nn-i+1,j,k) = tmp
             enddo
           enddo
         enddo
@@ -421,7 +414,7 @@ module mod_fft
     attributes(device) :: arr
     attributes(device) :: arr_tmp
     attributes(device) :: arr_sincos
-    real(rp) :: arg,carg,sarg
+    real(rp) :: arg,carg,sarg,tmp
     !
     nn = n(idir)-2
     select case(idir)
@@ -468,18 +461,10 @@ module mod_fft
         !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr_tmp(ii,j,k) = arr(i,j,k) ! redundant
-            enddo
-          enddo
-        enddo
-        !$cuf kernel do(3) <<<*,*>>>
-        do k=1,n(3)
-          do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            do i=1,nn/2
+              tmp             = arr(i     ,j,k)
+              arr(i     ,j,k) = arr(nn-i+1,j,k)
+              arr(nn-i+1,j,k) = tmp
             enddo
           enddo
         enddo
@@ -520,7 +505,7 @@ module mod_fft
     attributes(device) :: arr
     attributes(device) :: arr_tmp
     attributes(device) :: arr_sincos
-    real(rp) :: arg,carg,sarg
+    real(rp) :: arg,carg,sarg,tmp
     !
     nn = n(idir)-2
     select case(idir)
@@ -531,18 +516,10 @@ module mod_fft
         !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr_tmp(ii,j,k) = arr(i,j,k)
-            enddo
-          enddo
-        enddo
-        !$cuf kernel do(3) <<<*,*>>>
-        do k=1,n(3)
-          do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            do i=1,nn/2
+              tmp             = arr(i     ,j,k)
+              arr(i     ,j,k) = arr(nn-i+1,j,k)
+              arr(nn-i+1,j,k) = tmp
             enddo
           enddo
         enddo
@@ -629,6 +606,7 @@ module mod_fft
     integer :: i,j,k,nn,ii
     attributes(device) :: arr
     attributes(device) :: arr_tmp
+    real(rp) :: tmp
     !
     nn = n(idir)
     select case(idir)
@@ -660,18 +638,10 @@ module mod_fft
         !$cuf kernel do(3) <<<*,*>>>
         do k=1,n(3)
           do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr_tmp(ii,j,k) = arr(i,j,k)
-            enddo
-          enddo
-        enddo
-        !$cuf kernel do(3) <<<*,*>>>
-        do k=1,n(3)
-          do j=1,n(2)
-            do i=1,nn
-              ii = i-1
-              arr(i,j,k) = arr_tmp(nn-1-ii,j,k)
+            do i=1,nn/2
+              tmp             = arr(i     ,j,k)
+              arr(i     ,j,k) = arr(nn-i+1,j,k)
+              arr(nn-i+1,j,k) = tmp
             enddo
           enddo
         enddo
