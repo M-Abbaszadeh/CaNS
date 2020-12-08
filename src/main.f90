@@ -52,6 +52,7 @@ program cans
                              is_forced,bforce, &
                              n,ng,l,dl,dli, &
                              read_input
+  use mod_post       , only: rotation_rate,strain_rate,q_criterion
   use mod_sanity     , only: test_sanity
   use mod_solver     , only: solver
   use mod_types
@@ -66,6 +67,10 @@ program cans
   real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,up,vp,wp,pp
 #ifdef USE_CUDA
   attributes(managed) :: u,v,w,p,up,vp,wp,pp
+#endif
+  real(rp), allocatable, dimension(:,:,:) :: str,ens,qcr
+#ifdef USE_CUDA
+  attributes(managed) :: str,ens,qcr
 #endif
   real(rp), dimension(:,:,:), allocatable, target  :: dudtrk_A,dvdtrk_A,dwdtrk_A
   real(rp), dimension(:,:,:), allocatable, target  :: dudtrk_B,dvdtrk_B,dwdtrk_B
@@ -163,6 +168,9 @@ program cans
            dudtrk( n(1),n(2),n(3)), &
            dvdtrk( n(1),n(2),n(3)), &
            dwdtrk( n(1),n(2),n(3)))
+  allocate(str(n(1),n(2),n(3)), &
+           ens(n(1),n(2),n(3)), &
+           qcr( n(1),n(2),n(3)))
 
 #ifdef USE_CUDA
   allocate(lambdaxyp(ng(1)/dims(2),ng(2)/dims(1)))
@@ -241,6 +249,13 @@ program cans
   istat = cudaMemPrefetchAsync( dudtrk, size(dudtrk), mydev, 0 )
   istat = cudaMemPrefetchAsync( dvdtrk, size(dvdtrk), mydev, 0 )
   istat = cudaMemPrefetchAsync( dwdtrk, size(dwdtrk), mydev, 0 )
+  !
+  istat = cudaMemAdvise( ens, size(ens), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( str, size(str), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemAdvise( qcr, size(qcr), cudaMemAdviseSetPreferredLocation, mydev )
+  istat = cudaMemPrefetchAsync( ens, size(ens), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( str, size(str), cudaCpuDeviceId, 0 )
+  istat = cudaMemPrefetchAsync( qcr, size(qcr), cudaCpuDeviceId, 0 )
   !
   istat = cudaMemAdvise( rhsbp%x, size(rhsbp%x), cudaMemAdviseSetPreferredLocation, mydev )
   istat = cudaMemAdvise( rhsbp%y, size(rhsbp%y), cudaMemAdviseSetPreferredLocation, mydev )
@@ -389,6 +404,11 @@ program cans
   include 'out1d.h90'
   include 'out2d.h90'
   include 'out3d.h90'
+  call strain_rate(  n,dli,dzci,u,v,w,str)
+  call rotation_rate(n,dli,dzci,u,v,w,ens)
+  call q_criterion(n,ens,str,qcr)
+  call write_visu_3d(datadir,'qcr_fld_'//fldnum//'.bin','log_visu_3d.out','Q_criterion', &
+                     (/1,1,1/),(/ng(1),ng(2),ng(3)/),(/1,1,1/),time,istep,qcr(1:n(1),1:n(2),1:n(3)))
   !$cuf kernel do(3) <<<*,*>>> 
   do k=1,n(3)
     do j=1,n(2)
@@ -796,6 +816,12 @@ program cans
     endif
     if(mod(istep,iout3d).eq.0) then
       include 'out3d.h90'
+      call strain_rate(  n,dli,dzci,u,v,w,str)
+      call rotation_rate(n,dli,dzci,u,v,w,ens)
+      call q_criterion(n,ens,str,qcr)
+      call write_visu_3d(datadir,'qcr_fld_'//fldnum//'.bin','log_visu_3d.out','Q_criterion', &
+                         (/1,1,1/),(/ng(1),ng(2),ng(3)/),(/1,1,1/),time,istep, &
+                         qcr(1:n(1),1:n(2),1:n(3)))
     endif
     if(mod(istep,isave ).eq.0.or.(is_done.and..not.kill)) then
       ristep = 1.*istep

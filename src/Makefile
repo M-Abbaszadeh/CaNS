@@ -11,7 +11,7 @@ PROF := #-pg
 FFLAGS := $(OPT) $(BIG) $(DBG) $(PROF) $(OMP) $(OTH)
 TARGET = cans
 #
-OBJ = bound.o chkdiv.o chkdt.o common_mpi.o correc.o debug.o fft.o fftw.o fillps.o initflow.o initgrid.o initmpi.o initsolver.o load.o main.o mom.o momd.o moms.o output.o param.o rk.o sanity.o solver.o decomp_2d.o io.o types.o nvtx.o
+OBJ = bound.o chkdiv.o chkdt.o common_mpi.o correc.o debug.o fft.o fftw.o fillps.o initflow.o initgrid.o initmpi.o initsolver.o load.o main.o mom.o momd.o moms.o output.o param.o post.o rk.o sanity.o solver.o decomp_2d.o io.o types.o nvtx.o
 #
 LIBS = -lfftw3 -lfftw3_threads -Mcudalib=cufft -L/usr/local/cuda/lib64 -lnvToolsExt 
 #
@@ -62,7 +62,7 @@ initsolver.o: initsolver.f90 common_mpi.o fft.o param.o types.o
 	$(FC) $(FFLAGS) -cpp -c  initsolver.f90 
 load.o: load.f90 common_mpi.o decomp_2d.o io.o types.o
 	$(FC) $(FFLAGS) -cpp -c  load.f90 
-main.o: main.f90 bound.o chkdiv.o chkdt.o debug.o fft.o fillps.o initflow.o initflow.o initgrid.o initmpi.o initsolver.o load.o output.o param.o rk.o sanity.o solver.o types.o out1d.h90 out2d.h90 out3d.h90 nvtx.o
+main.o: main.f90 bound.o chkdiv.o chkdt.o debug.o fft.o fillps.o initflow.o initflow.o initgrid.o initmpi.o initsolver.o load.o output.o param.o rk.o post.o sanity.o solver.o types.o out1d.h90 out2d.h90 out3d.h90 nvtx.o
 	$(FC) $(FFLAGS) -cpp -c  main.f90
 mom.o: mom.f90 common_mpi.o types.o
 	$(FC) $(FFLAGS) -cpp -c  mom.f90
@@ -80,6 +80,8 @@ sanity.o: sanity.f90 bound.o chkdiv.o common_mpi.o correc.o debug.o decomp_2d.o 
 	$(FC) $(FFLAGS) -cpp -c  sanity.f90
 solver.o: solver.f90 fft.o param.o types.o
 	$(FC) $(FFLAGS) -cpp -c  solver.f90
+post.o: post.f90 types.o
+	$(FC) $(FFLAGS) -cpp -c  post.f90
 types.o: types.f90
 	$(FC) $(FFLAGS) -cpp -c  $<
 # 2decomp&fft library
