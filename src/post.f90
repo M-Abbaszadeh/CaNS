@@ -1,5 +1,6 @@
 module mod_post
   use mod_types
+  !@cuf use cudafor
   implicit none
   private
   public vorticity, rotation_rate, strain_rate, q_criterion
@@ -14,6 +15,7 @@ contains
     real(rp) :: dxi,dyi
     integer :: i,j,k
 #ifdef USE_CUDA
+    integer :: istat
     attributes(managed) :: dzci,ux,uy,uz,vox,voy,voz
 #endif
     dxi = dli(1)
@@ -59,6 +61,7 @@ contains
           enddo
        enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
 #ifndef USE_CUDA
     !$OMP END PARALLEL
 #endif
@@ -74,6 +77,7 @@ contains
     real(rp) :: dxi,dyi
     integer :: i,j,k
 #ifdef USE_CUDA
+    integer :: istat
     attributes(managed) :: dzci,ux,uy,uz,str
 #endif
     dxi = dli(1)
@@ -117,6 +121,7 @@ contains
           enddo
        enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
 #ifndef USE_CUDA
     !$OMP END PARALLEL
 #endif
@@ -132,6 +137,7 @@ contains
     real(rp) :: dxi,dyi
     integer :: i,j,k
 #ifdef USE_CUDA
+    integer :: istat
     attributes(managed) :: dzci,ux,uy,uz,ens
 #endif
     !
@@ -172,6 +178,7 @@ contains
         enddo
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
 #ifndef USE_CUDA
     !$OMP END PARALLEL
 #endif
@@ -184,6 +191,7 @@ contains
     real(rp) :: s11,s22,s33,s12,s13,s23
     integer  :: i,j,k
 #ifdef USE_CUDA
+    integer :: istat
     attributes(managed) :: ens,str,qcr
 #endif
 #ifdef USE_CUDA
@@ -201,6 +209,7 @@ contains
         enddo
       enddo
     enddo
+    !@cuf istat=cudaDeviceSynchronize()
 #ifndef USE_CUDA
     !$OMP END PARALLEL
 #endif

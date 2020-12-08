@@ -170,7 +170,7 @@ program cans
            dwdtrk( n(1),n(2),n(3)))
   allocate(str(n(1),n(2),n(3)), &
            ens(n(1),n(2),n(3)), &
-           qcr( n(1),n(2),n(3)))
+           qcr(n(1),n(2),n(3)))
 
 #ifdef USE_CUDA
   allocate(lambdaxyp(ng(1)/dims(2),ng(2)/dims(1)))
