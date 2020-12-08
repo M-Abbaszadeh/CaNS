@@ -137,6 +137,8 @@ contains
     !
     ! compute wijwij, where wij = (1/2)(du_i/dx_j - du_j/dx_i)
     !
+    dxi = dli(1)
+    dyi = dli(2)
 #ifdef USE_CUDA
     !$cuf kernel do(3) <<<*,*>>>
 #else
