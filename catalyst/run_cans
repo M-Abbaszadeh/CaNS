@@ -1,0 +1,44 @@
+#!/bin/bash
+APP="./cans"
+
+CPU_CORES_PER_RANK=8
+
+export PAMI_ENABLE_STRIPING=0
+export PAMI_IBV_ADAPTER_AFFINITY=1
+export CUDA_CACHE_PATH=/tmp
+export OMP_NUM_THREADS=$CPU_CORES_PER_RANK
+export CUDA_DEVICE_MAX_CONNECTIONS=12
+export CUDA_COPY_SPLIT_THRESHOLD_MB=1
+
+
+lrank=$(($PMIX_RANK%4))
+
+HCA_0="mlx5_0:1"
+HCA_1="mlx5_1:1"
+
+case ${lrank} in
+[0])
+#export CUDA_VISIBLE_DEVICES=0
+export PAMI_IBV_DEVICE_NAME=$HCA_0
+export OMPI_MCA_btl_openib_if_include=$HCA_0
+numactl --cpunodebind=0 --membind=0 $APP
+  ;;
+[1])
+#export CUDA_VISIBLE_DEVICES=1
+export PAMI_IBV_DEVICE_NAME=$HCA_0
+export OMPI_MCA_btl_openib_if_include=$HCA_0
+numactl --cpunodebind=0 --membind=0 $APP
+  ;;
+[2])
+#export CUDA_VISIBLE_DEVICES=2
+export PAMI_IBV_DEVICE_NAME=$HCA_1
+export OMPI_MCA_btl_openib_if_include=$HCA_1
+numactl --cpunodebind=8 --membind=8 $APP
+  ;;
+[3])
+#export CUDA_VISIBLE_DEVICES=3
+export PAMI_IBV_DEVICE_NAME=$HCA_1
+export OMPI_MCA_btl_openib_if_include=$HCA_1
+numactl --cpunodebind=8 --membind=8 $APP
+  ;;
+esac

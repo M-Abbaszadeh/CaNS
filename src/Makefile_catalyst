@@ -1,11 +1,13 @@
+# module load hpc-sdk/2020--binary python cuda/10.2 fftw
+#
 # fortran compiler
-FC   = mpif90
-CXX=mpicxx
+FC   = mpifort
+CXX = mpic++
 # flags
 BIG := # -mcmodel=medium
 DBG := # -g -fbacktrace -Wall -O0 -Wextra -pedantic -fcheck=all
 OMP := #-mp # -fopenmp
-OPT := -O3 -Mcuda=cuda11.0#,cuda10.0
+OPT := -O3 -Mcuda=cuda10.2
 #OPT := -O3 -Mcuda=cc70,nofma
 OTH := -DUSE_CATALYST -DTIMING -DGPU_MPI -DEPA2A -DTIMING -DUSE_CUDA -DUSE_NVTX -DEPHC #-DDEBUG #-DIMPDIFF
 PROF := #-pg
@@ -14,15 +16,12 @@ TARGET = cans
 #
 OBJ = bound.o chkdiv.o chkdt.o common_mpi.o correc.o debug.o fft.o fftw.o fillps.o initflow.o initgrid.o initmpi.o initsolver.o load.o main.o mom.o momd.o moms.o output.o param.o post.o rk.o sanity.o solver.o decomp_2d.o io.o types.o nvtx.o
 #
-LIBS = -lfftw3 -lfftw3_threads -Mcudalib=cufft -L/usr/local/cuda/lib64 -lnvToolsExt 
+LIBS = -lfftw3 -lfftw3_threads -Mcudalib=cufft -L${CUDA_HOME}/lib64 -lnvToolsExt 
 
-PARAVIEW_ROOT=/opt/paraview-5.8.1
-MPI_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/2020/comm_libs/mpi
-LIBS += -Wl,-rpath,${PARAVIEW_ROOT}/lib:/opt/nvidia/hpc_sdk/Linux_x86_64/20.9/comm_libs/openmpi/openmpi-3.1.5/lib ${PARAVIEW_ROOT}/lib/libvtkParallelMPI-pv5.8.so.1 ${PARAVIEW_ROOT}/lib/libvtkPVPythonCatalyst-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib/libvtkPVCatalyst-pv5.8.so.5.8 /opt/nvidia/hpc_sdk/Linux_x86_64/20.9/comm_libs/openmpi/openmpi-3.1.5/lib/libmpi.so ${PARAVIEW_ROOT}/lib/libvtkPythonInterpreter-pv5.8.so.5.8 /usr/lib/x86_64-linux-gnu/libpython3.6m.so ${PARAVIEW_ROOT}/lib/libvtkCommonDataModel-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib/libvtkCommonTransforms-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib/libvtkCommonMath-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib/libvtkCommonCore-pv5.8.so.5.8 -lpthread ${PARAVIEW_ROOT}/lib/libvtksys-pv5.8.so.5.8 -ldl -Wl,-rpath-link,${PARAVIEW_ROOT}/lib
-LIBS += -L$(MPI_ROOT)/lib -lmpi_cxx
+PARAVIEW_ROOT=${HOME}/libraries/paraview-5.8.1
+LIBS += -Wl,-rpath,${PARAVIEW_ROOT}/lib64 ${PARAVIEW_ROOT}/lib64/libvtkParallelMPI-pv5.8.so.1 ${PARAVIEW_ROOT}/lib64/libvtkPVPythonCatalyst-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib64/libvtkPVCatalyst-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib64/libvtkPythonInterpreter-pv5.8.so.5.8 ${PYTHON_HOME}/lib/libpython3.8.so ${PARAVIEW_ROOT}/lib64/libvtkCommonDataModel-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib64/libvtkCommonTransforms-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib64/libvtkCommonMath-pv5.8.so.5.8 ${PARAVIEW_ROOT}/lib64/libvtkCommonCore-pv5.8.so.5.8 -lpthread ${PARAVIEW_ROOT}/lib64/libvtksys-pv5.8.so.5.8 -ldl -Wl,-rpath-link,${PARAVIEW_ROOT}/lib64
 LIBS += -lstdc++
-#INCS+=-I$(PARAVIEW_ROOT)/include/paraview-5.8/ -I/usr/local/cuda/include
-INCS=-I$(PARAVIEW_ROOT)/include/paraview-5.8/ -I/opt/nvidia/hpc_sdk/Linux_x86_64/2020/cuda/include
+INCS=-I$(PARAVIEW_ROOT)/include/paraview-5.8/ -I${CUDA_HOME}/include
 OBJ+=catalyst_adapter.o catalyst_interfaces.o
 #
 all: $(TARGET)
@@ -106,4 +105,4 @@ nvtx.o: nvtx.f90
 catalyst_interfaces.o: catalyst_interfaces.f90
 	$(FC) $(FFLAGS) -cpp $(FFLAGS_2DECOMP) -c catalyst_interfaces.f90
 catalyst_adapter.o: catalyst_adapter.cxx
-	$(CXX) $(INCS) -c catalyst_adapter.cxx
+	$(CXX) $(INCS) -std=c++11 -c catalyst_adapter.cxx
