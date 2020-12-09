@@ -424,7 +424,7 @@ program cans
 
   catalyst_active = .TRUE.
   call CatalystInitialize(catalyst_active)
-  call InitializeFlowGrid(n(1), l(1)/dims(1), n(2), l(2)/dims(2), n(3), l(3), &
+  call InitializeFlowGrid(n(1), l(1)/dims(1), n(2), l(2)/dims(2), n(3), zc(1:n(3)), &
                           u(0,0,1), v(0,0,1), w(0,0,1), p(0,0,1), qcr(0,0,1), &
                           dims, (/ mod(myid, dims(1)), myid / dims(1) /))
   if (myid .eq. 0) print*, "Running Catalyst pipeline..."

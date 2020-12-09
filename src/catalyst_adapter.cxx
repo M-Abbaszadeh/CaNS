@@ -42,12 +42,11 @@ struct GlobalVars {
 GlobalVars globals;
 
 // Routine to build mesh in VTK
-void BuildFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsigned int nz, double lz)
+void BuildFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsigned int nz, double *zc)
 {
 
   double dx = lx / nx;
   double dy = ly / ny;
-  double dz = lz / nz;
 
 #if 0
   // Using managed memory here to avoid some memory movement in Paraview/Catalyst. Not strictly required.
@@ -58,7 +57,7 @@ void BuildFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsig
   // Set point coordinates (offset by -1 in i,j for ghosts)
   for (int i = 0; i < nx + 2; ++i) globals.xc[i] = globals.procIdx[0] * lx + (i-1) * dx + dx / 2;
   for (int j = 0; j < ny + 2; ++j) globals.yc[j] = globals.procIdx[1] * ly + (j-1) * dy + dy / 2;
-  for (int k = 0; k < nz; ++k) globals.zc[k] = k * dz + dz / 2;
+  for (int k = 0; k < nz; ++k) globals.zc[k] = zc[k];
 #else
 
   // Using managed memory here to avoid some memory movement in Paraview/Catalyst. Not strictly required.
@@ -69,7 +68,7 @@ void BuildFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsig
       for (int i = 0; i < nx + 2; ++i) {
         point[0] = globals.procIdx[0] * lx + (i-1) * dx + dx / 2;
         point[1] = globals.procIdx[1] * ly + (j-1) * dy + dy / 2;
-        point[2] = k * dz + dz / 2;
+        point[2] = zc[k];
 	point += 3;
       }
     }
@@ -142,7 +141,7 @@ void InitializeFlowGridAttributes(unsigned int numberOfPoints,
 
 
 // Routine to build flow grid and associate velocity data arrays
-void InitializeFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsigned int nz, double lz,
+void InitializeFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, unsigned int nz, double* zc,
                         double* uData, double* vData, double *wData, double* pData, double* qcritData,
                         int* procDims, int* procIdx)
 {
@@ -165,7 +164,7 @@ void InitializeFlowGrid(unsigned int nx, double lx, unsigned int ny, double ly, 
 #else
   globals.FlowGrid = vtkStructuredGrid::New();
 #endif
-  BuildFlowGrid(nx, lx, ny, ly, nz, lz);
+  BuildFlowGrid(nx, lx, ny, ly, nz, zc);
   InitializeFlowGridAttributes(numberOfPoints, uData, vData, wData, pData, qcritData);
 }
 
