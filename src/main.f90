@@ -23,7 +23,7 @@ program cans
   use iso_c_binding  , only: C_PTR
   use mpi
   use decomp_2d
-  use mod_bound      , only: boundp,bounduvw,updt_rhs_b
+  use mod_bound      , only: boundp,bounduvw,updt_rhs_b,updthalo
   use mod_chkdiv     , only: chkdiv
   use mod_chkdt      , only: chkdt
   use mod_common_mpi , only: myid,ierr
@@ -62,6 +62,9 @@ program cans
 #ifdef USE_NVTX
   use nvtx
 #endif 
+#ifdef USE_CATALYST
+  use catalyst_interfaces
+#endif
   !$ use omp_lib
   implicit none
   real(rp), allocatable, dimension(:,:,:) :: u,v,w,p,up,vp,wp,pp
@@ -130,6 +133,10 @@ program cans
   integer :: kk
   logical :: is_done,kill
   integer :: rlen
+#ifdef USE_CATALYST
+  logical(c_bool) :: catalyst_active
+  real(rp) :: t0, t1
+#endif
   !
   call MPI_INIT(ierr)
   call MPI_COMM_RANK(MPI_COMM_WORLD, myid, ierr)
@@ -170,7 +177,7 @@ program cans
            dwdtrk( n(1),n(2),n(3)))
   allocate(str(n(1),n(2),n(3)), &
            ens(n(1),n(2),n(3)), &
-           qcr(n(1),n(2),n(3)))
+           qcr(0:n(1)+1,0:n(2)+1,0:n(3)+1))
 
 #ifdef USE_CUDA
   allocate(lambdaxyp(ng(1)/dims(2),ng(2)/dims(1)))
@@ -333,6 +340,7 @@ program cans
       write(99,*) l(1),l(2),l(3) 
     close(99)
   endif
+
 #ifdef USE_CUDA
   istat = cudaMemPrefetchAsync( dzci, size(dzci), mydev, 0 )
   istat = cudaMemPrefetchAsync( dzfi, size(dzfi), mydev, 0 )
@@ -401,14 +409,31 @@ program cans
   ! post-process and write initial condition
   !
   write(fldnum,'(i7.7)') istep
-  include 'out1d.h90'
-  include 'out2d.h90'
-  include 'out3d.h90'
+#ifndef USE_CATALYST
   call strain_rate(  n,dli,dzci,u,v,w,str)
   call rotation_rate(n,dli,dzci,u,v,w,ens)
   call q_criterion(n,ens,str,qcr)
   call write_visu_3d(datadir,'qcr_fld_'//fldnum//'.bin','log_visu_3d.out','Q_criterion', &
                      (/1,1,1/),(/ng(1),ng(2),ng(3)/),(/1,1,1/),time,istep,qcr(1:n(1),1:n(2),1:n(3)))
+  include 'out1d.h90'
+  include 'out2d.h90'
+  include 'out3d.h90'
+#else
+  call updthalo((/n(1),n(2)/),1,qcr)
+  call updthalo((/n(1),n(2)/),2,qcr)
+
+  catalyst_active = .TRUE.
+  call CatalystInitialize(catalyst_active)
+  call InitializeFlowGrid(n(1), l(1)/dims(1), n(2), l(2)/dims(2), n(3), l(3), &
+                          u(0,0,1), v(0,0,1), w(0,0,1), p(0,0,1), qcr(0,0,1), &
+                          dims, (/ mod(myid, dims(1)), myid / dims(1) /))
+  if (myid .eq. 0) print*, "Running Catalyst pipeline..."
+  t0 = MPI_WTIME()
+  call CatalystCoProcess(0.d0, 0)
+  t1 = MPI_WTIME()
+  if (myid .eq. 0) print*, "Done. Catalyst time:", t1-t0
+#endif
+
   !$cuf kernel do(3) <<<*,*>>> 
   do k=1,n(3)
     do j=1,n(2)
@@ -815,13 +840,23 @@ program cans
       include 'out2d.h90'
     endif
     if(mod(istep,iout3d).eq.0) then
-      include 'out3d.h90'
       call strain_rate(  n,dli,dzci,u,v,w,str)
       call rotation_rate(n,dli,dzci,u,v,w,ens)
       call q_criterion(n,ens,str,qcr)
+#ifndef USE_CATALYST
       call write_visu_3d(datadir,'qcr_fld_'//fldnum//'.bin','log_visu_3d.out','Q_criterion', &
                          (/1,1,1/),(/ng(1),ng(2),ng(3)/),(/1,1,1/),time,istep, &
                          qcr(1:n(1),1:n(2),1:n(3)))
+      include 'out3d.h90'
+#else
+      call updthalo((/n(1),n(2)/),1,qcr)
+      call updthalo((/n(1),n(2)/),2,qcr)
+      if (myid .eq. 0) print*, "Running Catalyst pipeline..."
+      t0 = MPI_WTIME()
+      call CatalystCoProcess(time, istep)
+      t1 = MPI_WTIME()
+      if (myid .eq. 0) print*, "Done. Catalyst time:", t1-t0
+#endif
     endif
     if(mod(istep,isave ).eq.0.or.(is_done.and..not.kill)) then
       ristep = 1.*istep

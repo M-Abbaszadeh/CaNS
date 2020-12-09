@@ -10,7 +10,7 @@ module mod_bound
   use mod_types
   implicit none
   private
-  public boundp,bounduvw,updt_rhs_b
+  public boundp,bounduvw,updt_rhs_b,updthalo
   contains
   subroutine bounduvw(cbc,n,bc,is_correc,dl,dzc,dzf,u,v,w)
     !

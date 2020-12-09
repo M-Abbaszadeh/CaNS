@@ -187,7 +187,7 @@ contains
     implicit none
     integer , intent(in ), dimension(3)        :: n
     real(rp), intent(in ), dimension(1:,1:,1:) :: ens,str
-    real(rp), intent(out), dimension(1:,1:,1:) :: qcr
+    real(rp), intent(out), dimension(0:,0:,0:) :: qcr
     real(rp) :: s11,s22,s33,s12,s13,s23
     integer  :: i,j,k
 #ifdef USE_CUDA
