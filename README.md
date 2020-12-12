@@ -100,4 +100,4 @@ Please read the `ACKNOWLEDGEMENTS` and `LICENSE` files.
 
 Pedro Costa -- original version (p.simoes.costa@gmail.com)
 
-Everett Phillips and Massimiliano Fatica -- GPU extension with CUDA Fortran
+Everett Phillips, Massimiliano Fatica and Josh Romero -- GPU extension with CUDA Fortran and *in situ* visualization with Paraview Catalyst
