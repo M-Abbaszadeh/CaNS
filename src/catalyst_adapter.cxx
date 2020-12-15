@@ -42,7 +42,7 @@ GlobalVars globals;
 // Routine to build mesh in VTK
 void BuildFlowGrid(int* lo, int* hi, double* xc, double* yc, double* zc)
 {
-int n[3];
+unsigned int n[3];
 for (int i = 0; i < 3; i++) {
    n[i] = hi[i] - lo[i] + 1;
    }
