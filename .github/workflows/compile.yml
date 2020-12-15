@@ -13,16 +13,19 @@ jobs:
       run: |
         sudo apt-get update; sudo apt-get install gfortran libopenmpi-dev libfftw3-dev
         #
+        NVVERSION_A=20.11
+        NVVERSION_B=2011
+        CUDA_VERSION=11.1
         export NVHPC_SILENT=true
         export NVHPC_INSTALL_TYPE=single
         export NVHPC_INSTALL_DIR=$HOME/software/nvidia/hpc_sdk
-        wget https://developer.download.nvidia.com/hpc-sdk/nvhpc_2020_207_Linux_x86_64_cuda_11.0.tar.gz
-        tar xpzf nvhpc_2020_207_Linux_x86_64_cuda_11.0.tar.gz
-        ./nvhpc_2020_207_Linux_x86_64_cuda_11.0/install
-        rm -rf nvhpc_2020_207_Linux_x86_64_cuda_11.0*
+        wget https://developer.download.nvidia.com/hpc-sdk/$NVVERSION_A/nvhpc_2020_${NVVERSION_B}_Linux_x86_64_cuda_$CUDA_VERSION.tar.gz
+        tar xpzf nvhpc_2020_${NVVERSION_B}_Linux_x86_64_cuda_$CUDA_VERSION.tar.gz
+        ./nvhpc_2020_${NVVERSION_B}_Linux_x86_64_cuda_$CUDA_VERSION/install
+        rm -rf nvhpc_2020_${NVVERSION_B}_Linux_x86_64_cuda_$CUDA_VERSION*
     - name: test compilation
       run: |
-        NVVERSION=20.7
+        NVVERSION=20.11
         NVHPC_INSTALL_DIR=$HOME/software/nvidia/hpc_sdk
         NVARCH=`uname -s`_`uname -m`; export NVARCH
         NVCOMPILERS=$NVHPC_INSTALL_DIR; export NVCOMPILERS
