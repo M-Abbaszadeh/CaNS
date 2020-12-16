@@ -26,7 +26,7 @@ program cans
   use mod_bound      , only: boundp,bounduvw,updt_rhs_b,updthalo
   use mod_chkdiv     , only: chkdiv
   use mod_chkdt      , only: chkdt
-  use mod_common_mpi , only: myid,ierr
+  use mod_common_mpi , only: myid,ierr,coord
   use mod_correc     , only: correc
   use mod_debug      , only: chkmean
   use mod_fft        , only: fftini,fftend
@@ -112,12 +112,14 @@ program cans
   real(rp) :: dt,dti,dtmax,time,dtrk,dtrki,divtot,divmax
   integer  :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi
+  real(rp), allocatable, dimension(:) :: xc,yc ! for catalyst
 #ifdef USE_CUDA
   integer :: istat
   integer(kind=cuda_count_kind) :: freeMem,totMem
   integer(8) :: totEle
   attributes(managed) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi,lambdaxyp,ap,bp,cp,rhsbp
   attributes(managed) :: dudtrko,dvdtrko,dwdtrko,dudtrk,dvdtrk,dwdtrk,dudtrk_A,dvdtrk_A,dwdtrk_A,dudtrk_B,dvdtrk_B,dwdtrk_B
+  attributes(managed) :: xc,yc
 #endif
   real(rp) :: meanvel,meanvelu,meanvelv,meanvelw
   real(rp), dimension(3) :: dpdl
@@ -194,6 +196,7 @@ program cans
            dzclzi(0:n(3)+1), &
            dzflzi(0:n(3)+1), &
            zclzi( 0:n(3)+1))
+  allocate(xc(0:n(1)+1),yc(0:n(2)+1))
   allocate(rhsbp)
   allocate(rhsbp%x(n(2),n(3),0:1), &
            rhsbp%y(n(1),n(3),0:1), &
@@ -316,6 +319,12 @@ program cans
   istat = cudaMemPrefetchAsync( dzf, size(dzf), cudaCpuDeviceId, 0 )
 #endif
   call initgrid(inivel,n(3),gr,lz,dzc,dzf,zc,zf)
+  do kk=0,n(1)+1
+    xc(kk) = (kk-0.5)*dl(1)
+  enddo
+  do kk=0,n(2)+1
+    yc(kk) = (kk-0.5)*dl(2)
+  enddo
 #ifdef USE_CUDA
   istat = cudaMemPrefetchAsync(  zc, size( zc), mydev, 0 )
   istat = cudaMemPrefetchAsync(  zf, size( zf), mydev, 0 )
@@ -419,14 +428,11 @@ program cans
   include 'out2d.h90'
   include 'out3d.h90'
 #else
-  call updthalo((/n(1),n(2)/),1,qcr)
-  call updthalo((/n(1),n(2)/),2,qcr)
-
+  call boundp(cbcpre,n,bcpre,dl,dzc,dzf,qcr)
   catalyst_active = .TRUE.
   call CatalystInitialize(catalyst_active)
-  call InitializeFlowGrid(n(1), l(1)/dims(1), n(2), l(2)/dims(2), n(3), zc(1:n(3)), &
-                          u(0,0,1), v(0,0,1), w(0,0,1), p(0,0,1), qcr(0,0,1), &
-                          dims, (/ mod(myid, dims(1)), myid / dims(1) /))
+  call InitializeFlowGrid(n+[2,2,0],ng+[2,2,0],xc,yc,zc(1), &
+                          u(0,0,1), v(0,0,1), w(0,0,1), p(0,0,1), qcr(0,0,1))
   if (myid .eq. 0) print*, "Running Catalyst pipeline..."
   t0 = MPI_WTIME()
   call CatalystCoProcess(0.d0, 0)
@@ -849,8 +855,7 @@ program cans
                          qcr(1:n(1),1:n(2),1:n(3)))
       include 'out3d.h90'
 #else
-      call updthalo((/n(1),n(2)/),1,qcr)
-      call updthalo((/n(1),n(2)/),2,qcr)
+      call boundp(cbcpre,n,bcpre,dl,dzc,dzf,qcr)
       if (myid .eq. 0) print*, "Running Catalyst pipeline..."
       t0 = MPI_WTIME()
       call CatalystCoProcess(time, istep)
