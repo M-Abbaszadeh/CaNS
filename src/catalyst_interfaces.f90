@@ -1,10 +1,10 @@
 module catalyst_interfaces
   interface
-    subroutine InitializeFlowGrid(lo,hi,lo_g,hi_g,xc,yc,zc, &
+    subroutine InitializeFlowGrid(n, ng, xc, yc, zc, &
                                   uData, vData, wData, pData, qcritData) &
                                   bind(C, name="InitializeFlowGrid")
       use iso_c_binding
-      integer(c_int) ::  lo(*),hi(*),lo_g(*),hi_g(*)
+      integer(c_int) ::  n(*),ng(*)
       real(c_double) ::  xc(*),yc(*),zc(*)
       real(c_double) ::  uData(*)
       real(c_double) ::  vData(*)

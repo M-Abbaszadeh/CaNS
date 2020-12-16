@@ -113,7 +113,6 @@ program cans
   integer  :: irk,istep
   real(rp), allocatable, dimension(:) :: dzc,dzf,zc,zf,dzci,dzfi,dzflzi,dzclzi,zclzi
   real(rp), allocatable, dimension(:) :: xc,yc ! for catalyst
-  integer , dimension(3) :: lo,hi,lo_g,hi_g ! for catalyst
 #ifdef USE_CUDA
   integer :: istat
   integer(kind=cuda_count_kind) :: freeMem,totMem
@@ -320,14 +319,10 @@ program cans
   istat = cudaMemPrefetchAsync( dzf, size(dzf), cudaCpuDeviceId, 0 )
 #endif
   call initgrid(inivel,n(3),gr,lz,dzc,dzf,zc,zf)
-  lo(:) = [coord(1)*n(1)+1,coord(2)*n(2)+1,0*n(3)+1]
-  hi(:) = lo(:) + n(:) - 1
-  lo_g(:) = [1,1,1]
-  hi_g(:) = lo_g(:) + ng(:) - 1
-  do kk=lo(1)-1,hi(1)+1
+  do kk=0,n(1)+1
     xc(kk) = (kk-0.5)*dl(1)
   enddo
-  do kk=lo(2)-1,hi(2)+1
+  do kk=0,n(2)+1
     yc(kk) = (kk-0.5)*dl(2)
   enddo
 #ifdef USE_CUDA
@@ -436,8 +431,8 @@ program cans
   call boundp(cbcpre,n,bcpre,dl,dzc,dzf,qcr)
   catalyst_active = .TRUE.
   call CatalystInitialize(catalyst_active)
-  call InitializeFlowGrid(lo,hi,lo_g,hi_g,xc,yc,zc, &
-                          u(0,0,0), v(0,0,0), w(0,0,0), p(0,0,0), qcr(0,0,0))
+  call InitializeFlowGrid(n+[2,2,0],ng+[2,2,0],xc,yc,zc(1), &
+                          u(0,0,1), v(0,0,1), w(0,0,1), p(0,0,1), qcr(0,0,1))
   if (myid .eq. 0) print*, "Running Catalyst pipeline..."
   t0 = MPI_WTIME()
   call CatalystCoProcess(0.d0, 0)

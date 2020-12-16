@@ -34,36 +34,31 @@ struct GlobalVars {
   vtkStructuredGrid* FlowGrid;
 #endif
   float *xc, *yc, *zc, *xyzc;
-  int lo[3],hi[3],lo_g[3],hi_g[3];
+  unsigned int ng[3];
 };
 
 GlobalVars globals;
 
 // Routine to build mesh in VTK
-void BuildFlowGrid(int* lo, int* hi, double* xc, double* yc, double* zc)
+void BuildFlowGrid(unsigned int* n, double* xc, double* yc, double* zc)
 {
-unsigned int n[3];
-for (int i = 0; i < 3; i++) {
-   n[i] = hi[i] - lo[i] + 1;
-   }
 #if 0
   // Using managed memory here to avoid some memory movement in Paraview/Catalyst. Not strictly required.
-  cudaMallocManaged(&globals.xc, (n[0] + 2) * sizeof(float));
-  cudaMallocManaged(&globals.yc, (n[1] + 2) * sizeof(float));
-  cudaMallocManaged(&globals.zc, (n[2] + 2) * sizeof(float));
+  cudaMallocManaged(&globals.xc, n[0] * sizeof(float));
+  cudaMallocManaged(&globals.yc, n[1] * sizeof(float));
+  cudaMallocManaged(&globals.zc, n[2] * sizeof(float));
 
-  // Set point coordinates (offset by -1 in i,j for ghosts)
-  for (int i = 0; i < n[0] + 2; ++i) globals.xc[i] = xc[k];
-  for (int j = 0; j < n[1] + 2; ++j) globals.yc[j] = yc[k];
-  for (int k = 0; k < n[2] + 2; ++k) globals.zc[k] = zc[k];
+  for (int i = 0; i < n[0]; ++i) globals.xc[i] = xc[k];
+  for (int j = 0; j < n[1]; ++j) globals.yc[j] = yc[k];
+  for (int k = 0; k < n[2]; ++k) globals.zc[k] = zc[k];
 #else
 
   // Using managed memory here to avoid some memory movement in Paraview/Catalyst. Not strictly required.
-  cudaMallocManaged(&globals.xyzc, (n[0] + 2) * (n[1] + 2) * (n[2] + 2) * 3 * sizeof(float));
+  cudaMallocManaged(&globals.xyzc, n[0] * n[1] * n[2] * 3 * sizeof(float));
   float* point = globals.xyzc;
-  for (int k = 0; k < n[2] + 2; ++k) {
-    for (int j = 0; j < n[1] + 2; ++j) {
-      for (int i = 0; i < n[0] + 2; ++i) {
+  for (int k = 0; k < n[2]; ++k) {
+    for (int j = 0; j < n[1]; ++j) {
+      for (int i = 0; i < n[0]; ++i) {
         point[0] = xc[i];
         point[1] = yc[j];
         point[2] = zc[k];
@@ -73,7 +68,7 @@ for (int i = 0; i < 3; i++) {
   }
   vtkNew<vtkFloatArray> pointArray;
   pointArray->SetNumberOfComponents(3);
-  pointArray->SetArray(globals.xyzc, static_cast<vtkIdType>((n[0] + 2) * (n[1] + 2) * (n[2] + 2) * 3), 1);
+  pointArray->SetArray(globals.xyzc, static_cast<vtkIdType>(n[0] * n[1] * n[2] * 3), 1);
   vtkNew<vtkPoints> points;
   points->SetData(pointArray.GetPointer());
 #endif
@@ -83,9 +78,9 @@ for (int i = 0; i < 3; i++) {
   xc->SetNumberOfComponents(1);
   yc->SetNumberOfComponents(1);
   zc->SetNumberOfComponents(1);
-  xc->SetArray(globals.xc, static_cast<vtkIdType>(n[0] + 2), 1);
-  yc->SetArray(globals.yc, static_cast<vtkIdType>(n[1] + 2), 1);
-  zc->SetArray(globals.zc, static_cast<vtkIdType>(n[2] + 2), 1);
+  xc->SetArray(globals.xc, static_cast<vtkIdType>(n[0]), 1);
+  yc->SetArray(globals.yc, static_cast<vtkIdType>(n[1]), 1);
+  zc->SetArray(globals.zc, static_cast<vtkIdType>(n[2]), 1);
 
   globals.FlowGrid->SetXCoordinates(xc.GetPointer());
   globals.FlowGrid->SetYCoordinates(yc.GetPointer());
@@ -94,7 +89,7 @@ for (int i = 0; i < 3; i++) {
   globals.FlowGrid->SetPoints(points);
 #endif
 
-  globals.FlowGrid->SetExtent(lo[0]-1,hi[0]+1,lo[1]-1,hi[1]+1,lo[2]-1,hi[2]+1);
+  globals.FlowGrid->SetExtent(0,n[0]-1,0,n[1]-1,0,n[2]-1);
 
 }
 
@@ -137,16 +132,13 @@ void InitializeFlowGridAttributes(unsigned int numberOfPoints,
 
 
 // Routine to build flow grid and associate velocity data arrays
-void InitializeFlowGrid(int* lo, int* hi, int* lo_g, int* hi_g, double* xc, double* yc, double* zc,
+void InitializeFlowGrid(unsigned int* n, unsigned int* ng, double* xc, double* yc, double* zc,
                         double* uData, double* vData, double *wData, double* pData, double* qcritData)
 {
-  unsigned int numberOfPoints = (hi[0]-lo[0]+1 + 2) * (hi[1]-lo[1]+1 + 2) * (hi[2]-lo[2]+1 + 2); //includes ghost points in x, y
+  unsigned int numberOfPoints = n[0] * n[1] * n[2]; //includes ghost points in x, y
 
   for (int i = 0; i < 3; ++i) {
-    globals.lo[i] = lo[i];
-    globals.hi[i] = hi[i];
-    globals.lo_g[i] = lo_g[i];
-    globals.hi_g[i] = hi_g[i];
+    globals.ng[i] = ng[i];
   }
 
   std::cout << "Calling InitializeFlowGrid:" << std::endl;
@@ -157,7 +149,7 @@ void InitializeFlowGrid(int* lo, int* hi, int* lo_g, int* hi_g, double* xc, doub
 #else
   globals.FlowGrid = vtkStructuredGrid::New();
 #endif
-  BuildFlowGrid(lo, hi, xc, yc, zc);
+  BuildFlowGrid(n, xc, yc, zc);
   InitializeFlowGridAttributes(numberOfPoints, uData, vData, wData, pData, qcritData);
 }
 
@@ -207,9 +199,9 @@ void CatalystCoProcess(double time, unsigned int timeStep)
   if (globals.Processor->RequestDataDescription(dataDescription.GetPointer()) != 0)
   {
     dataDescription->GetInputDescriptionByName("input")->SetGrid(globals.FlowGrid);
-    dataDescription->GetInputDescriptionByName("input")->SetWholeExtent(globals.lo_g[0]-1, globals.hi_g[0] + 1,
-		                                                        globals.lo_g[1]-1, globals.hi_g[1] + 1,
-			                                                globals.lo_g[2]-1, globals.hi_g[2] + 1);
+    dataDescription->GetInputDescriptionByName("input")->SetWholeExtent(0, globals.ng[0] - 1,
+		                                                        0, globals.ng[1] - 1,
+			                                                0, globals.ng[2] - 1);
     globals.Processor->CoProcess(dataDescription.GetPointer());
   }
 }
