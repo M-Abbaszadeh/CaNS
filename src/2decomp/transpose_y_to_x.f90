@@ -94,9 +94,9 @@
     ! self
     m = col_rank
     pos = decomp%x1disp(m) + 1
-    if( dims(1) .eq. 1 ) then
-      istat = cudaMemcpy2DAsync( dst, s1*s2, src, s1*s2, s1*s2, s3, stream=a2a_comp )
-    else
+    !if( dims(1) .eq. 1 ) then
+    !  istat = cudaMemcpy2DAsync( dst, s1*s2, src, s1*s2, s1*s2, s3, stream=a2a_comp )
+    !else
 #ifndef EPHC
       !TODO: replace these two copy with a 3D copy or custom kernel for direct src => dst
       istat = cudaMemcpy2DAsync( work2_r_d(pos), s1*(decomp%y1dist(m)), src(1,decomp%y1idx(m),1), s1*s2, s1*(decomp%y1dist(m)),s3, stream=a2a_comp )
@@ -118,7 +118,7 @@
       enddo
       enddo
 #endif
-    endif
+    !endif
 
     do iter=1,dims(1)-1
       if( pow2 ) then
